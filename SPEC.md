@@ -1,10 +1,10 @@
 # Maze Quiz 迷宮問答：規格書
 
-版本：0.1（2026-09-25）
+版本：0.2（2026-09-25；改了什麼見附錄 B）
 
 ## 0. 給 Claude Code 的工作規則
 
-1. 先讀完整份規格再動手。依 §15 的里程碑順序實作，一次做一個。
+1. 先讀完整份規格再動手。依 §15 的里程碑順序實作，一次做一個。M0–M7 已全部完成；之後的試玩回饋與追加需求同樣一次做一件，做完照第 2 點停下來。
 2. 每個里程碑完成時停下來：列出做了什麼、我要怎麼手動驗證，等我確認後再進下一個。
 3. 規格沒寫到或有矛盾時，重要的事先問我；小事可以自己決定，但要記在 `DECISIONS.md`（一條一行，附理由）。
 4. 識別字用英文，**程式註解用正體中文**。我正在學 TypeScript，請多用型別表達意圖（discriminated union、`readonly`、字面型別），少用 `any` 與型別斷言（`as`）。
@@ -34,10 +34,17 @@
 | 測試 | Vitest | `src/core/` 在 Node 環境測試 |
 | 圖片處理 | sharp（devDependency） | 只在 `scripts/` 使用，不進遊戲本體 |
 | 腳本執行 | tsx（devDependency） | 執行 `scripts/*.ts` |
+| Node 型別 | @types/node（devDependency） | 讓 `scripts/` 與測試裡用到的 Node API 能做型別檢查 |
 
 執行期相依套件：**無**。開發環境是 Ubuntu + Node.js LTS。
 
 npm scripts：`dev`、`build`、`preview`、`test`、`typecheck`、`images`（§13）。
+
+**瀏覽器相容性**：學校裡還有停在 iPadOS 15 的舊 iPad，遊戲要能在 Safari 15 上執行。
+
+- 不用 Safari 15 還沒有的功能：`ctx.roundRect()`（圓角用 `arcTo` 畫）、`Array.prototype.at()`、`Object.hasOwn`（改用 `Object.prototype.hasOwnProperty.call`）、CSS `:has()`、`color-mix()`。
+- ▶ ◀ ⏸ 這類會被 iPad 顯示成彩色 emoji 的符號改用 SVG；♥ 後面加 U+FE0E。
+- 輸入框字級至少 16 px，否則 Safari 在輸入框取得焦點時會自動放大畫面。
 
 ## 3. 專案結構
 
@@ -46,6 +53,7 @@ maze-quiz/
 ├─ SPEC.md
 ├─ DECISIONS.md              實作時自行補充的決定
 ├─ index.html
+├─ vite.config.ts            相對路徑（base: './'）、建置時間（§5.1）
 ├─ public/
 │  ├─ fonts/                 Andika 字型與 OFL 授權檔
 │  └─ quizzes/
@@ -54,13 +62,18 @@ maze-quiz/
 │        └─ images/          處理後的選項圖片（§13）
 ├─ scripts/
 │  ├─ image-sources.json     每張圖選用的來源檔案（§13）
+│  ├─ image-utils.ts         授權判斷、HTML 轉文字等純函式（有測試）
 │  └─ process-images.ts      下載、處理圖片並寫回授權資訊
 └─ src/
-   ├─ main.ts                進入點：組裝各模組、啟動遊戲迴圈
+   ├─ main.ts                進入點：組裝各模組、依狀態更新畫面
+   ├─ loop.ts                遊戲迴圈（§5.3）
+   ├─ loader.ts              載入題組、字型與圖片
+   ├─ urlParams.ts           網址參數（§4.3）
    ├─ config.ts              所有可調參數（附錄 A）
+   ├─ style.css              DOM 的樣式與顏色變數
    ├─ core/                  純邏輯，不碰 DOM
-   │  ├─ types.ts
-   │  ├─ quiz.ts             題組型別、驗證、預設值合併
+   │  ├─ types.ts            Phase、Direction 等跨模組共用的型別
+   │  ├─ quiz.ts             題組型別、驗證、預設值合併、語言版本
    │  ├─ rng.ts              可設種子的亂數產生器
    │  ├─ grid.ts             格子、座標、BFS
    │  ├─ maze.ts             迷宮與答案區生成
@@ -73,11 +86,15 @@ maze-quiz/
    │  └─ theme.ts            視覺主題（§12.3）
    ├─ input/
    │  ├─ keyboard.ts
-   │  └─ pointer.ts
-   ├─ ui/                    DOM 畫面：標題、暫停、結算、排行榜、圖片來源
+   │  ├─ pointer.ts
+   │  ├─ dpad.ts             觸控方向鍵（§7.3）
+   │  └─ zoomGuard.ts        防止誤觸縮放（§7.4）
+   ├─ ui/                    DOM 畫面：標題、狀態列、題目列、暫停、結算、排行榜、圖片來源、除錯面板
    │  └─ strings.ts          介面文字（正體中文）
    └─ storage/
-      └─ leaderboard.ts      localStorage 存取
+      ├─ localStorage.ts     取得 localStorage（無法存取時是 null）
+      ├─ leaderboard.ts      排行榜的讀寫
+      └─ preferences.ts      這台裝置記住的設定（§5.4）
 ```
 
 測試檔與被測模組放在一起（`maze.test.ts` 與 `maze.ts` 同資料夾）。
@@ -95,6 +112,8 @@ export interface QuizFile {
   readonly id: string;                 // 題組代號，也用於排行榜的儲存 key
   readonly title: string;              // 顯示在標題畫面
   readonly locale: string;             // 題目內容的語言（BCP 47），例如 "en"
+  readonly languageName?: string;      // 語言選單上顯示的名稱，例如 "English"；有 translations 時必填
+  readonly translations?: Readonly<Record<string, QuizTranslation>>; // key 是語言代碼（BCP 47），例如 "zh-Hant"
   readonly options?: Partial<GameOptions>;
   readonly images: Readonly<Record<string, ImageAsset>>;
   readonly questions: readonly Question[];
@@ -114,6 +133,18 @@ export interface Choice {
   readonly correct: boolean;           // 一題可以有多個正確選項
 }
 
+/** 同一組題目的另一個語言版本：只換文字 */
+export interface QuizTranslation {
+  readonly languageName: string;       // 語言選單上顯示的名稱，例如 "中文"
+  readonly title: string;
+  readonly questions: Readonly<Record<string, QuestionTranslation>>; // key 是題目 id，每一題都要有
+}
+
+export interface QuestionTranslation {
+  readonly prompt: string;
+  readonly choices: Readonly<Record<string, string>>; // key 是選項 id，值是選項文字；每個選項都要有
+}
+
 export interface ImageAsset {
   readonly src: string;                // 相對於 quiz.json 所在的資料夾
   readonly alt: string;
@@ -129,19 +160,21 @@ export interface ImageCredit {
 }
 
 export type TimerMode = 'none' | 'countUp' | 'countDown';
-export type Difficulty = 1 | 2 | 3 | 4 | 5;
+export type Difficulty = 1 | 2 | 3;
 
 export interface GameOptions {
   readonly timerMode: TimerMode;       // 預設 'countUp'
   readonly countDownSeconds: number;   // 預設 300，只在 countDown 使用
   readonly lives: number;              // 預設 3，範圍 1–9
-  readonly difficulty: Difficulty;     // 預設 3
+  readonly difficulty: Difficulty;     // 預設 2；標題畫面可以改（§5.4）
   readonly shuffleQuestions: boolean;  // 預設 true
   readonly showAnswersAtEnd: boolean;  // 預設 true
 }
 ```
 
 圖片集中定義在 `images`，題目和選項只用 key 引用。同一種動物在不同題目重複出現時共用一張圖，授權資訊也只要寫一次。
+
+**語言版本**：同一組題目的其他語言寫在同一個 quiz.json 的 `translations` 裡，只放標題、題目與選項的文字；對錯、圖片、選項數與 id 都沿用原文，不必寫兩次，也不會改了一邊忘了另一邊。圖片的 `alt` 不翻譯，沿用原文。玩家在標題畫面選語言（§5.4）；`localizeQuiz(quiz, locale)` 把題組換成指定語言後仍然回傳 `QuizFile`（`locale` 也換成那個語言），遊戲、結算與回顧都不必知道有翻譯。
 
 ### 4.2 驗證規則
 
@@ -163,30 +196,44 @@ type ValidationResult =
 - 選項少於 2 個或多於 6 個。
 - 某題沒有任何正確選項。
 - `image` 指向 `images` 裡不存在的 key。
-- `options` 的值超出範圍：`lives` 1–9、`difficulty` 1–5、`countDownSeconds` 30–3600。
+- `options` 的值超出範圍：`lives` 1–9、`difficulty` 1–3、`countDownSeconds` 30–3600。
+- 欄位缺少或型別不對（例如 `lives` 不是整數、`credit` 整個沒寫而不是 `null`）。
+- `translations`：語言代碼不是合法的 BCP 47，或和原文的 `locale` 是同一個語言（大小寫不同也算）；有 `translations` 時原文沒寫 `languageName`；缺少某一題或某個選項的翻譯，或多出原文沒有的 id。
 
 **警告**（可以玩，但在 console 與除錯覆蓋層顯示）：
 
 - 某題所有選項都是正確的。
 - 選項文字超過 20 個字元（答案區可能放不下）。
 - 題目文字超過 120 個字元。
+- 翻譯的文字也照上面兩條檢查。
 - 圖片的 `credit` 是 `null`。
+- `options` 裡有不認得的 key（例如把 `lives` 拼成 `live`）。
+
+字數一律以 Unicode code point 計算，中文字與 emoji 都算一個字元。
 
 ### 4.3 載入與網址參數
 
 | 參數 | 預設 | 說明 |
 |---|---|---|
-| `quiz` | `zoo-animals` | 載入 `public/quizzes/<quiz>/quiz.json` |
-| `seed` | 隨機 | 固定迷宮種子，方便重現與除錯 |
+| `quiz` | `zoo-animals` | 載入 `public/quizzes/<quiz>/quiz.json`；只接受英文字母、數字、`-`、`_` |
+| `seed` | 隨機 | 固定迷宮種子與出題順序，方便重現與除錯；沒指定時每一局重新產生 |
 | `debug` | 關閉 | `debug=1` 開啟除錯覆蓋層（§12.6） |
+| `difficulty` | — | 測試用：1–3，蓋過標題畫面選的難度 |
+| `lives` | — | 測試用：1–9 |
+| `timer` | — | 測試用：`none`、`countUp` 或 `countDown` |
+| `seconds` | — | 測試用：倒數秒數，30–3600 |
 
-`options` 的合併順序：程式預設值，再以題組 JSON 的 `options` 覆蓋。
+測試用的參數是為了驗收時不必改 quiz.json；值不合法時顯示錯誤畫面。
+
+`options` 的合併順序（後面的蓋過前面的）：程式預設值 → 題組 JSON 的 `options` → 這台裝置記住的難度（只有難度，§5.4）→ 測試用的網址參數。因為難度會記在裝置上，題組的 `options.difficulty` 只在這台裝置第一次開啟時有作用。
 
 所有圖片在標題畫面出現前預先載入並顯示進度。某張圖載入失敗時，該選項改用純文字顯示並記一筆警告，不中斷遊戲。
 
 ### 4.4 範例題組
 
-`public/quizzes/zoo-animals/quiz.json` 隨本規格提供：五題，正確答案依序是 elephant、zebra、giraffe、tiger、crocodile，選項數刻意從 3 到 6 不等，方便測試各種答案區配置。題目用英文描述動物特徵，因為所有選項都有圖片；如果題目寫中文名稱，學生看圖就能作答，不必讀懂英文。
+`public/quizzes/zoo-animals/quiz.json` 隨本規格提供：五題，正確答案依序是 elephant、zebra、giraffe、tiger、crocodile，選項數刻意從 3 到 6 不等，方便測試各種答案區配置。題目用英文描述動物特徵，因為所有選項都有圖片；如果題目寫中文名稱，學生看圖就能作答，不必讀懂英文。出題順序照預設值隨機打亂（沒有寫 `shuffleQuestions`）。
+
+範例題組附有 `zh-Hant` 中文版（`languageName` 是「中文」，原文是「English」）。中文題目同樣描述特徵，避免用到答案的字（例如不寫「象鼻」），要讀懂題目才答得出來；選項用台灣的說法（「貓熊」「棕熊」「花豹」）。
 
 ## 5. 遊戲流程
 
@@ -216,13 +263,13 @@ export type Phase =
 |---|---|---|
 | `loading` | 載入題組、字型與圖片，顯示進度 | 驗證失敗 → `error`；完成 → `title` |
 | `error` | 列出驗證錯誤 | 無（修正檔案後重新整理） |
-| `title` | 題組標題、「開始」按鈕，以及「排行榜」「圖片來源」 | 按「開始」→ `levelIntro` |
+| `title` | 題組標題、設定（§5.4）、「開始」按鈕，以及「排行榜」「圖片來源」；最下面顯示建置時間（例如「版本 2026-09-25 15:00」，試玩時確認裝置拿到新版） | 按「開始」→ `levelIntro` |
 | `levelIntro` | 生成本關迷宮並畫出，題目顯示在下方，中央顯示「預備」約 1.5 秒；玩家與敵人都不動 | 時間到 → `playing` |
 | `playing` | 主要遊戲 | 走進正確答案區 → `levelComplete`；走進錯誤答案區 → `wrongFeedback`；碰到敵人 → `lifeLost`；倒數歸零 → `timeUp` |
 | `wrongFeedback` | 該答案區顯示 ✗，全場靜止約 0.6 秒 | 時間到：封住該區、玩家移到門外（§8）→ `playing` |
 | `lifeLost` | 受傷動畫約 1 秒，全場靜止 | 還有命：重生（§10）→ `playing`；沒命 → `gameOver` |
 | `levelComplete` | 該答案區顯示 ✓ 約 0.8 秒 | 還有題目 → `levelIntro`；題目做完 → `results` |
-| `paused` | 半透明覆蓋層，「繼續」「重新開始」按鈕 | 「繼續」→ 回到 `resumeTo` |
+| `paused` | 半透明覆蓋層，「繼續」「重新開始」按鈕；畫面停格 | 「繼續」或再按一次 `Esc`／`P` → 回到 `resumeTo`；「重新開始」→ 新的一局，從第 1 題的 `levelIntro` 開始 |
 | `gameOver` | 「沒有命了」與「看成績」按鈕 | → `results` |
 | `timeUp` | 「時間到」與「看成績」按鈕 | → `results` |
 | `results` | 成績、逐題回顧、輸入名字（§11） | 「再玩一次」→ `title` |
@@ -240,6 +287,20 @@ export type Phase =
 ### 5.3 遊戲迴圈
 
 以 `requestAnimationFrame` 驅動，邏輯以固定 60 Hz 步進（accumulator 模式），繪圖每幀一次。單幀 dt 上限 250 ms，避免切回分頁時一次補跑太多步。
+
+### 5.4 標題畫面的設定
+
+標題畫面有三個設定，選的值記在這台裝置的 `localStorage`：
+
+| 設定 | 選項 | 沒選過時 | 儲存的 key |
+|---|---|---|---|
+| 語言 | 題組原文與各個翻譯（§4.1）；只有一種語言時不顯示 | 原文 | `maze-quiz:language:<quizId>`（每個題組分開記） |
+| 難度 | 1、2、3 | 題組的 `options.difficulty`，沒寫就是 2 | `maze-quiz:difficulty`（所有題組共用） |
+| 觸控方向鍵 | 右邊、左邊、不顯示（§7.3） | 有觸控螢幕（`any-pointer: coarse`）時放右邊，否則不顯示 | `maze-quiz:dpad` |
+
+- 設定排成兩欄的表格（左邊名稱、右邊選項），選項群組用 `role="radiogroup"`；螢幕寬度小於 30rem 時名稱改放在選項上面。
+- 換語言時，題組的標題、題目、選項文字與分頁標題都換成那個語言。
+- `localStorage` 無法使用時照樣用上表的預設值，遊戲照常進行。
 
 ## 6. 迷宮生成
 
@@ -275,7 +336,8 @@ export type Phase =
 3. 在其餘區域以 recursive backtracker（DFS）在奇數格點上挖出完美迷宮，確保每個 `outside` 都連進去。
 4. 移除死路：對每個死路格（三面是牆），打通一面牆接到相鄰走廊。比例由 `deadEndRemoval` 決定，預設 1.0，也就是全部移除。不可以打通外框或園區的牆。死路會讓玩家被敵人堵死，所以預設不留。
 5. 起點：最接近迷宮正中央的地板格。
-6. 敵人出生點：與起點 BFS 距離至少 `spawnMinDistance`（預設 8）的路口格（有三條以上通路），彼此不重複。
+6. 公平性調整：起點到各 `outside` 的距離不符合 §6.4 時，反覆試著打通或封住一面牆（兩個 cell 之間），挑讓距離差距最小的一步，直到符合為止。不可以產生死路或讓走廊斷開，也不動外框、園區外圍與「離中央不比起點遠」的格子。只靠換 `attempt` 重新生成時，5 個選項的關卡幾乎都不合格（「上中」的答案區離中央特別近）。
+7. 敵人出生點：與起點 BFS 距離至少 `spawnMinDistance`（預設 8）的路口格（有三條以上通路），彼此不重複，也不選門外那一格。數量一律是難度表裡最多的 `enemyCount`（目前是 2），依難度取前幾個，所以同一個種子在不同難度下是同一張迷宮。
 
 ### 6.4 驗證條件
 
@@ -286,7 +348,8 @@ export type Phase =
 - 園區以外沒有 2×2 的地板區塊（走廊都是一格寬）。
 - 起點到各個 `outside` 的 BFS 距離，最遠除以最近不超過 `fairnessMaxRatio`（預設 1.35），避免答案位置有遠近差異而暗示答案或造成不公平。
 - 起點到任何 `outside` 的距離至少 `minStartToZone`（預設 6）。
-- `deadEndRemoval = 1.0` 時，園區以外沒有死路。
+- `deadEndRemoval = 1.0` 時，園區以外沒有死路。判斷死路時門不算通路，所以門外那一格也要接兩條以上走廊（答錯封門後玩家會被放在門外）。
+- 敵人出生點的數量足夠。
 
 ## 7. 玩家移動與操作
 
@@ -307,10 +370,12 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
 
 1. `d` 與目前方向相反：立刻迴轉。
 2. 玩家停著（`dir === null`）：`d` 方向可以走就出發；是牆就忽略，並給一個小小的碰壁回饋（角色輕微抖動）。
-3. `d` 與目前方向垂直，而且玩家距離某個格子中心不超過 `turnTolerance`（預設 0.3 格）、那一格往 `d` 可以走：吸附到格子中心並轉向。
-4. 以上都不成立：把 `d` 暫存為 `pendingDir`，**只保留 `inputGraceMs`（預設 150 ms）**。這段時間內一經過可以轉向的格子中心就轉，過期就丟掉。
+3. `d` 與目前方向垂直，而且玩家距離某個格子中心不超過 `turnTolerance`（預設 0.45 格）、那一格往 `d` 可以走：吸附到格子中心並轉向。
+4. 以上都不成立：把 `d` 暫存為 `pendingDir`，**只保留 `inputGraceMs`（預設 300 ms）**。這段時間內一經過可以轉向的格子中心就轉，過期就丟掉。
 
-第 4 點是為了讓觸控操作不必精準到毫秒，但時間很短，**不是**「記住方向、到下一個路口自動轉彎」。如果實測後平板上還是太難操作，先調大 `inputGraceMs`，不要改成自動轉彎。
+與目前方向相同的指令直接忽略；暫存期間在牆前停下時，`pendingDir` 一併清掉。
+
+第 4 點是為了讓觸控操作不必精準到毫秒，但時間很短，**不是**「記住方向、到下一個路口自動轉彎」。團隊在平板試玩後，已經從原本的 0.3 格、150 ms 放寬到上面的值。之後再調整時要守住一個條件：以玩家速度在 `inputGraceMs` 內走的距離（300 ms 是 1.35 格），必須小於「剛過路口、超出吸附範圍」到下一個路口的距離（2 − `turnTolerance` = 1.55 格），否則就變成自動轉彎。
 
 ### 7.3 輸入來源
 
@@ -322,12 +387,24 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
 - 按點距離角色中心小於 `pointerDeadZoneTiles`（預設 0.6 格）時忽略。
 - 手指按住拖曳時，每當算出的方向改變就再送一次，玩家不用放開手指就能換方向。
 - `pointer.ts` 透過 renderer 提供的 `screenToTile()` 把螢幕座標轉成格座標後再計算，所以死區以「格」為單位，和螢幕大小無關。
+- 指標輸入綁在整個迷宮舞台（含迷宮外的留白），上方狀態列不算；直向畫面上下留白很大，按在迷宮下方往下走比較直覺。
+- 同一時間只追蹤一根手指，其他手指忽略。
 
-**畫面回饋**：角色身上畫出目前方向的小箭頭；有 `pendingDir` 時用虛線箭頭表示「等待轉向」；觸控點顯示短暫的漣漪。
+**觸控方向鍵**（試玩後加上）：
+
+- 放在題目列裡，可以放右邊、左邊或不顯示（§5.4）。迷宮四個角都是答案區，疊在迷宮上會蓋住選項。
+- 整組當成一個搖桿：依按點相對於方向鍵中心、取偏得比較多的那一軸決定方向；手指不放開滑到別的方向會再送一次；按住不放不會重複送出。和鍵盤、指標一樣，不會變成自動轉彎。
+- 箭頭用 SVG 畫（§2 相容性）；整組設 `aria-hidden`，因為鍵盤的方向鍵本來就能操作。
+
+**畫面回饋**：角色身上畫出目前方向的小箭頭；有 `pendingDir` 時用虛線箭頭表示「等待轉向」；觸控點顯示短暫的漣漪（滑鼠點擊也有，按在迷宮外的留白也看得到）。
 
 ### 7.4 平板必要設定
 
-- Canvas 設 `touch-action: none`，並阻止捲動、雙擊縮放、長按選單與文字選取。
+- 遊戲畫面（狀態列、迷宮舞台、題目列、方向鍵）設 `touch-action: none`，手指一按下就取消 `touchstart` 的預設動作，一次擋掉捲動、兩指縮放、點兩下放大、長按選單與文字選取。按鈕除外，要保留 click。迷宮與方向鍵用 Pointer Events，它在 touch 事件之前送出，不受影響。
+- 整頁設 `touch-action: pan-x pan-y`，viewport 設 `maximum-scale=1.0, user-scalable=no`，並攔下 Safari 的 `gesturestart`／`gesturechange`，以及兩根以上手指的 `touchstart`／`touchmove`。iPad 的 Safari 不理 viewport 的設定，只能靠事件攔截。
+- 標題、結算、圖片來源這些要能捲動的畫面不能取消 `touchstart`，改成取消「點兩下」第二下的 `touchend`（兩下間隔 400 ms、距離 60 px 以內；移動超過 12 px 算滑動）；輸入框裡不擋，才能點兩下選字。
+- 畫面已經被放大（`visualViewport.scale` 大於 1.01）時，上面這些防護全部暫停，讓使用者自己縮回來；縮回來之後自動恢復。
+- 需要放大畫面的使用者可以用系統的放大鏡功能。
 - 所有按鈕的觸控範圍至少 44×44 px。
 - 開發時用 `npm run dev -- --host`，同一個 Wi-Fi 下的平板就能直接開啟測試。
 
@@ -340,11 +417,11 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
   - 玩家移到該園區的 `outside`，`dir = null`。
   - **不扣命**，但記錄這題答錯一次（§11）。
 - 敵人永遠把園區內部與門視為牆。
-- 園區內顯示選項圖片（等比縮放、不裁切）與文字；沒有圖片就只顯示文字並放大字級。文字單行，放不下時縮小字級，最小 12 px。
+- 園區內顯示選項圖片（等比縮放、不裁切）與文字；沒有圖片就只顯示文字並放大字級。文字單行，放不下時縮小字級，最小 12 px；縮到 12 px 還放不下時截斷並加「…」（以 code point 為單位刪字）。
 
 ## 9. 敵人
 
-- 數量、速度與聰明程度由難度決定（附錄 A）。速度以玩家速度的比例表示。
+- 數量、速度與聰明程度由難度決定（附錄 A）。速度以玩家速度的比例表示。目前三級難度只差在速度，都是 2 隻、`smartRatio` 0.65，所以第 3 隻（`ambusher`）不會出現；程式與測試保留，難度表改回 3 隻時就會出現。
 - 三種行為，依序分配給第 1、2、3 隻：
   - `chaser`：目標是玩家所在的格子。
   - `wanderer`：目標是隨機的一個地板格，抵達後換下一個。
@@ -392,14 +469,18 @@ export interface LeaderboardEntry {
   readonly total: number;
   readonly elapsedMs: number;
   readonly livesLeft: number;
-  readonly optionsKey: string;  // 例如 "d3-l3-countUp"
+  readonly optionsKey: string;  // 例如 "d2-l3-countUp"
   readonly playedAt: string;    // ISO 8601
 }
 ```
 
-- 存在 `localStorage`，key 為 `maze-quiz:leaderboard:<quizId>`，保留前 10 名。
-- 排序：`score` 由高到低，其次 `elapsedMs` 由短到長，再其次 `livesLeft` 由多到少。
-- 只顯示 `optionsKey` 與目前設定相同的紀錄（由 `difficulty`、`lives`、`timerMode`、`countDownSeconds` 組成），不同設定的成績不互相比較。
+- 存在 `localStorage`，key 為 `maze-quiz:leaderboard:<quizId>`；每種設定（`optionsKey`）各自保留前 10 名，互不排擠。
+- 排序：`score` 由高到低，其次 `elapsedMs` 由短到長，再其次 `livesLeft` 由多到少；全部一樣時先玩的在前。
+- 只顯示 `optionsKey` 與目前設定相同的紀錄，不同設定的成績不互相比較。`optionsKey` 的格式：
+  - 基本是難度、命數與計時方式，例如 `d2-l3-countUp`。
+  - 倒數時加上秒數，例如 `d2-l3-countDown-300`；其他計時方式不因秒數不同而拆開排行榜。
+  - 玩翻譯版本時最後加上語言代碼，例如 `d2-l3-countUp-zh-Hant`；原文不加，加入語言選項之前的紀錄照樣對得上。
+- 能進前 10 名才顯示輸入名字的欄位。
 - `localStorage` 無法使用時（例如隱私瀏覽），排行榜停用並說明原因，遊戲照常進行。
 
 ## 12. 畫面與視覺
@@ -427,7 +508,7 @@ export interface LeaderboardEntry {
 
 - 上方狀態列：左邊是題號，右邊是生命、時間與暫停按鈕。
 - 中間是迷宮，置中。
-- 下方題目列：題目文字靠左對齊，最多兩行，放不下時縮小字級；題目有圖片時，圖片放在文字左側。
+- 下方題目列：題目文字靠左對齊，最多兩行，放不下時縮小字級（最小 14 px；再放不下就換到第三行，不截斷題目）；題目有圖片時，圖片放在文字左側。觸控方向鍵放在題目列的右端或左端（§7.3）。
 - 直向畫面也可以玩：迷宮縮小、上下留白，不強制旋轉。
 
 ### 12.2 縮放
@@ -455,6 +536,9 @@ export interface LeaderboardEntry {
 ### 12.4 字型
 
 - 題目與選項文字：**Andika**（SIL 為初學閱讀者設計的字型，字母形狀清楚好辨認，採 SIL Open Font License）。字型檔與授權檔放在 `public/fonts/`，不從外部 CDN 載入。
+  - 使用 SIL 發布的 7.000 版，只放一般與粗體兩個 woff2 與 `OFL.txt`（題目用一般字重，選項與標題用粗體）。
+  - 字型檔原封不動使用，不做子集化：Andika 有保留字型名稱，依 OFL 刪減字元算修改，改過就不能再叫 Andika。
+  - 字型在 `loading` 階段用 `document.fonts.load()` 先下載好，算進進度條（canvas 上的選項文字畫在快取的圖層裡，字型晚到就會一直是後備字型）；下載失敗時記一筆警告、改用後備字型，不中斷遊戲。
 - 介面中文：`"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif`。
 - Andika 不含中文字，中文會自動使用後備字型。
 
@@ -467,16 +551,16 @@ export interface LeaderboardEntry {
 
 ### 12.6 除錯覆蓋層（`?debug=1`）
 
-- 顯示格線、起點到各格的 BFS 距離、敵人的目標格、各園區的對錯、目前種子、FPS，以及題組驗證的警告。
+- 顯示格線、起點到各格的 BFS 距離、敵人出生點與目標格、各園區的對錯、目前種子、FPS、玩家狀態（位置、方向、等待轉向）、目前難度，以及題組驗證與圖片、字型載入的警告。
 - 快捷鍵：`N` 直接過關、`K` 扣一條命、`I` 切換無敵。
 
 ### 12.7 介面文字
 
-介面文字集中在 `src/ui/strings.ts`（正體中文），方便之後做多語系。用詞簡單、直接說明按下會發生什麼：「開始」「繼續」「重新開始」「再玩一次」「看成績」「排行榜」「圖片來源」。錯誤訊息要說清楚哪裡錯、怎麼修正。
+介面文字集中在 `src/ui/strings.ts`（正體中文），方便之後做多語系。題組內容的語言由 `translations` 處理（§4.1）；介面文字目前只有正體中文，不跟著題組的語言換。用詞簡單、直接說明按下會發生什麼：「開始」「繼續」「重新開始」「再玩一次」「看成績」「排行榜」「圖片來源」。錯誤訊息要說清楚哪裡錯、怎麼修正。
 
 ## 13. 圖片取得任務
 
-`quiz.json` 的 `images` 列了 20 種動物，`credit` 目前都是 `null`。請依下列規則找圖、處理，並補上授權資訊。
+`quiz.json` 的 `images` 列了 20 種動物。請依下列規則找圖、處理，並補上授權資訊。（M4 已完成：20 張圖與 `credit` 都已補上，挑圖的取捨記在 DECISIONS.md 的 M4 節。）
 
 ### 13.1 來源與授權
 
@@ -484,6 +568,7 @@ export interface LeaderboardEntry {
 - 呼叫 Wikimedia API 時要帶上可識別的 `User-Agent`（Wikimedia 的使用政策要求）。
 - **只接受**：CC0、Public Domain、CC BY、CC BY-SA（任何版本）。
 - **不接受**：含 NC 或 ND 條款、授權不明、「合理使用」。無法確認授權的圖一律不用。
+- 下載時被防機器人機制擋住（例如 HTTP 429 限流）時，照 `Retry-After` 等待；要等太久就先擱置、回報我，不要硬闖。
 
 ### 13.2 挑選標準
 
@@ -520,15 +605,15 @@ export interface LeaderboardEntry {
 1. 替每個 id 挑好來源檔案，記在 `scripts/image-sources.json`（例如 `{ "elephant": "File:African_Bush_Elephant.jpg" }`）。
 2. `scripts/process-images.ts`（`npm run images` 執行）讀取這份清單，然後：
    - 透過 API 取得授權資訊，不在 §13.1 允許清單內的直接報錯停止；
-   - 下載原始檔到 `scripts/.cache/`（加進 `.gitignore`）；
+   - 下載 1280 px 的縮圖到 `scripts/.cache/`（加進 `.gitignore`；已經下載過就跳過），每張間隔 3 秒。不下載原始檔：原始檔每張 4–21 MB，很快就被限流，而輸出只要 512 px；被限流時 `Retry-After` 超過 120 秒就停下並說明，下次從快取接續；
    - 長邊縮到 512 px、保持比例、**不裁切**（避免裁掉長頸鹿的脖子或大象的鼻子），輸出 WebP，品質 80，存到 `public/quizzes/zoo-animals/images/<id>.webp`；
-   - 把授權資訊寫回 `quiz.json` 的 `credit`。
-3. 依實際選用的圖片內容更新每張圖的 `alt`。
+   - 把授權資訊寫回 `quiz.json` 的 `credit`（只改 `src` 與 `credit`，寫入前先用 `validateQuiz` 檢查）。
+3. 依實際選用的圖片內容更新每張圖的 `alt`。`alt` 手動維護，腳本不會動它。
 
 ### 13.4 完成後
 
 - 列一張表給我檢查：id、來源檔案、作者、授權。
-- 遊戲的「圖片來源」畫面從 `quiz.json` 的 `credit` 自動產生清單（CC BY 與 CC BY-SA 都要求標示作者與授權）。
+- 遊戲的「圖片來源」畫面從 `quiz.json` 的 `credit` 自動產生清單（CC BY 與 CC BY-SA 都要求標示作者與授權）：縮圖、作品名稱（連到檔案說明頁）、作者、授權（連到授權條款），開頭註明照片經過縮小與轉檔。
 
 ## 14. 測試
 
@@ -536,18 +621,22 @@ export interface LeaderboardEntry {
 
 | 模組 | 測試重點 |
 |---|---|
-| `quiz` | 範例題組通過驗證；§4.2 每一條錯誤規則都有對應測試，錯誤訊息指出正確位置；預設值合併 |
+| `quiz` | 範例題組通過驗證；§4.2 每一條錯誤規則都有對應測試，錯誤訊息指出正確位置；預設值合併；翻譯的驗證、`localizeQuiz` 與 `quizLanguages` |
 | `rng` | 同一種子產生同樣的序列 |
 | `maze` | 種子 1–200 搭配 k = 2–6：§6.4 條件全部成立，或正確回報「採用最接近的一張」；同種子生成結果完全相同 |
-| `player` | 直走撞牆停在格子中心；L 形轉角會停住、不自動轉彎；迴轉立即生效；寬限時間內能轉、過期不轉；高速時不穿牆、不跳過格子中心 |
+| `player` | 直走撞牆停在格子中心；L 形轉角會停住、不自動轉彎；迴轉立即生效；寬限時間內能轉、過期不轉；高速時不穿牆、不跳過格子中心；預設的 `inputGraceMs` 走不到下一個路口（§7.2） |
 | 判定 | 答錯：封門、玩家移到門外、命不變、記錄答錯；答對：過關；多個正確選項時走進任一個都過關 |
 | `enemies` | 永遠在地板上、不進園區、非死路時不回頭；`smartRatio = 1` 的 chaser 每次決策都選 BFS 最短的方向 |
 | `game` | 命歸零 → `gameOver`；倒數歸零 → `timeUp`；`levelIntro` 與 `paused` 期間不計時 |
-| `scoring` | 分數計算、排行榜排序、`optionsKey` 過濾 |
+| `scoring` | 分數計算、排行榜排序、`optionsKey` 的格式（倒數秒數、語言）與過濾 |
+
+`core/` 以外也有測試：`urlParams`、`storage/`（排行榜逐筆驗證、偏好設定）、`input/pointer`、`input/zoomGuard`、`ui/format`、`render/theme`（canvas 與 `style.css` 共用的顏色與字型一致）、`scripts/image-utils`。
 
 ## 15. 開發里程碑
 
 每個里程碑結束時，`npm run typecheck`、`npm test`、`npm run build` 都要通過，然後停下來讓我確認（§0）。
+
+**M0–M7 已全部完成並驗收（2026-09-25）。** 下表保留當時的內容；M5 驗收時難度還是 1–5 級，之後改成 1–3 級（附錄 B）。之後的每一件回饋或追加需求，同樣要三項檢查都通過才算完成。
 
 | 里程碑 | 內容 | 我怎麼驗收 |
 |---|---|---|
@@ -564,7 +653,8 @@ export interface LeaderboardEntry {
 
 - 音效與靜音開關。
 - 單字發音：點選項或題目時朗讀英文，對語言學習特別有用。
-- 標題畫面的設定面板（調整計時、生命、難度）。
+- 標題畫面調整計時與生命（語言與難度已經可以在標題畫面選，§5.4）。
+- 介面文字的多語系（目前只有題組內容可以換語言）；圖片 `alt` 的翻譯。
 - 更多視覺主題。
 - 題組編輯器。
 - 以 iframe 嵌入 Moodle 等學習平台。
@@ -585,8 +675,8 @@ export const CONFIG = {
   },
   player: {
     speedTilesPerSec: 4.5,
-    turnTolerance: 0.3,        // 格；距格子中心多近可以轉向
-    inputGraceMs: 150,         // 轉向指令的暫存時間
+    turnTolerance: 0.45,       // 格；距格子中心多近可以轉向（原本 0.3，平板試玩後放寬）
+    inputGraceMs: 300,         // 轉向指令的暫存時間（原本 150）；不可以長到走得到下一個路口（§7.2）
     pointerDeadZoneTiles: 0.6,
   },
   enemy: {
@@ -614,10 +704,34 @@ export const CONFIG = {
 
 /** 難度表：enemySpeedRatio 是相對於玩家速度的比例 */
 export const DIFFICULTY_TABLE = {
-  1: { enemyCount: 1, enemySpeedRatio: 0.5, smartRatio: 0.25 },
-  2: { enemyCount: 2, enemySpeedRatio: 0.6, smartRatio: 0.45 },
+  1: { enemyCount: 2, enemySpeedRatio: 0.5, smartRatio: 0.65 },
+  2: { enemyCount: 2, enemySpeedRatio: 0.6, smartRatio: 0.65 },
   3: { enemyCount: 2, enemySpeedRatio: 0.7, smartRatio: 0.65 },
-  4: { enemyCount: 3, enemySpeedRatio: 0.8, smartRatio: 0.8 },
-  5: { enemyCount: 3, enemySpeedRatio: 0.9, smartRatio: 0.95 },
 } as const;
+
+/** 題組沒有指定時使用的遊戲設定（§4.1） */
+export const DEFAULT_GAME_OPTIONS: GameOptions = {
+  timerMode: 'countUp',
+  countDownSeconds: 300,
+  lives: 3,
+  difficulty: 2,
+  shuffleQuestions: true,
+  showAnswersAtEnd: true,
+};
 ```
+
+難度表原本是五級（敵人 1–3 隻、`smartRatio` 0.25–0.95）。改成三級時只留速度的差別，數量與聰明程度都用原本難度 3 的值，所以新的難度 3 就是原本的難度 3，1、2 級沿用原本 1、2 級的速度。
+
+## 附錄 B：版本紀錄
+
+**0.2（2026-09-25）**：M0–M7 全部完成後，把試玩回饋與追加需求寫回規格。細節與理由見 `DECISIONS.md` 的「M5 試玩回饋」「M7 之後的回饋」「使用者追加需求（2026-09-25）」各節。
+
+- 難度從 1–5 級改成 1–3 級，只差敵人速度，預設 2；可以在標題畫面選，記在這台裝置上（§4.1、§5.4、§9、附錄 A）。
+- 題組可以附其他語言的版本（`languageName`、`translations`），標題畫面選語言；範例題組加上中文版；排行榜依語言分開（§4.1、§4.2、§4.4、§5.4、§11.2）。
+- 範例題組的題目改成隨機順序（§4.4）。
+- 觸控方向鍵（§7.3）；防止平板誤觸縮放，被放大時可以自己縮回來（§7.4）。
+- 轉彎放寬：`turnTolerance` 0.3 → 0.45 格、`inputGraceMs` 150 → 300 ms（§7.2、附錄 A）。
+- 測試用的網址參數 `difficulty`、`lives`、`timer`、`seconds`（§4.3）。
+- 補上實作時確定的做法：瀏覽器相容性（§2）、專案結構（§3）、公平性調整與出生點（§6.3）、排行榜 `optionsKey` 的格式（§11.2）、字型檔（§12.4）、下載縮圖而不是原始檔（§13.3）、`core/` 以外的測試（§14）；標題畫面顯示建置時間（§5.1）。
+
+**0.1（2026-09-25）**：初版。
