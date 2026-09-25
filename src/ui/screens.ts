@@ -1,7 +1,6 @@
 import { DIFFICULTIES, type Difficulty, type ImageAsset, type QuizFile, type QuizLanguage } from '../core/quiz';
 import { DPAD_SIDES, type DpadSide } from '../storage/preferences';
 import { button, el } from './dom';
-import { formatBuildTime } from './format';
 import { STRINGS } from './strings';
 
 /** 覆蓋層上的各個畫面。每次呼叫都會替換掉 root 裡原本的內容。 */
@@ -106,9 +105,15 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
         button(STRINGS.credits, handlers.onCredits),
       ],
     }),
-    el('div', { className: 'settings', children: settings }),
-    // 建置時間：試玩時確認裝置拿到的是新版
-    el('p', { className: 'build-info', text: STRINGS.buildInfo(formatBuildTime(import.meta.env.VITE_BUILD_TIME)) }),
+    // 設定收在「進階選項」裡，平常收起來，需要時再打開（使用者要求）。
+    // summary 裡再包一層 span 來排版：舊版 Safari 的 summary 不一定支援 flex
+    el('details', {
+      className: 'advanced',
+      children: [
+        el('summary', { children: [el('span', { className: 'advanced-toggle', text: STRINGS.advancedOptions })] }),
+        el('div', { className: 'settings', children: settings }),
+      ],
+    }),
   ]);
   startButton.focus();
 }

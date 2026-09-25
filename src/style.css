@@ -406,13 +406,6 @@ body {
   color: var(--muted);
 }
 
-/* 標題畫面最下面的建置時間 */
-.build-info {
-  margin: 1.25rem 0 0;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
 .loading-text {
   margin: 0 0 0.75rem;
 }
@@ -467,6 +460,7 @@ progress {
 
   .btn-secondary:hover,
   .icon-btn:enabled:hover,
+  .advanced summary:hover .advanced-toggle,
   .segmented label:hover input:not(:checked) + span {
     background: var(--tint);
   }
@@ -719,14 +713,70 @@ progress {
   color: var(--on-hedge);
 }
 
-/* 標題畫面的設定（語言、難度、觸控方向鍵）：左欄是名稱，右欄是並排的選項，每個至少 44 px 高 */
+/* 標題畫面的「進階選項」：語言、難度、觸控方向鍵平常收起來，按一下展開 */
+.advanced {
+  margin-top: 1.25rem;
+}
+
+/* summary 用 block，不當成清單項目，瀏覽器內建的三角形就不會出現；Safari 要另外藏 ::-webkit-details-marker */
+.advanced summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary:focus-visible {
+  outline: none;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border-radius: 8px;
+  color: var(--hedge);
+  font-weight: 700;
+}
+
+/* 箭頭用邊框畫（不用 ▶ 字元，§2 相容性）：收起時朝右，展開時朝下；不加轉場動畫（§12.5） */
+.advanced-toggle::before {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.advanced[open] .advanced-toggle::before {
+  transform: rotate(45deg);
+}
+
+.advanced summary:active .advanced-toggle {
+  background: var(--tint);
+}
+
+/* 看得見的鍵盤焦點（§12.5） */
+.advanced summary:focus-visible .advanced-toggle {
+  outline: 3px solid var(--keeper);
+  outline-offset: 2px;
+}
+
+/* 設定：左欄是名稱，右欄是並排的選項，每個至少 44 px 高 */
 .settings {
   display: grid;
   grid-template-columns: auto auto;
   justify-content: center;
   align-items: center;
   gap: 10px 12px;
-  margin-top: 1.5rem;
+  margin-top: 0.75rem;
 }
 
 .setting-label {

@@ -36,7 +36,7 @@ describe('方向鍵位置的偏好設定', () => {
     expect(loadDpadSide(memoryStorage(), 'off')).toBe('off');
   });
 
-  it.each(['right', 'left', 'off'] as const)('存了 %s 之後讀得回來', (side) => {
+  it.each(['left', 'right', 'off'] as const)('存了 %s 之後讀得回來', (side) => {
     const storage = memoryStorage();
     saveDpadSide(storage, side);
     expect(loadDpadSide(storage, 'right')).toBe(side);

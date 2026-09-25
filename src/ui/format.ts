@@ -8,14 +8,3 @@ export function formatClock(ms: number, rounding: 'down' | 'up' = 'down'): strin
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
-
-/** 建置時間顯示成當地時間的「2026-09-25 14:20」；不是合法的時間就原樣顯示 */
-export function formatBuildTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}

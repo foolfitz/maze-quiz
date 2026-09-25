@@ -2,8 +2,8 @@ import { DIFFICULTIES, type Difficulty } from '../core/quiz';
 
 /** 這台裝置的偏好設定，存在 localStorage（和排行榜一樣用 maze-quiz: 開頭的 key） */
 
-/** 觸控方向鍵放在哪一邊；off 表示不顯示 */
-export const DPAD_SIDES = ['right', 'left', 'off'] as const;
+/** 觸控方向鍵放在哪一邊；off 表示不顯示。陣列的順序就是標題畫面上選項的順序 */
+export const DPAD_SIDES = ['left', 'right', 'off'] as const;
 export type DpadSide = (typeof DPAD_SIDES)[number];
 
 const DPAD_KEY = 'maze-quiz:dpad';

@@ -19,8 +19,8 @@ export const STRINGS = {
   languageSetting: '語言',
   difficultySetting: '難度',
   dpadSetting: '觸控方向鍵',
-  dpadSides: { right: '右邊', left: '左邊', off: '不顯示' },
-  buildInfo: (time: string) => `版本 ${time}`,
+  advancedOptions: '進階選項',
+  dpadSides: { left: '左邊', right: '右邊', off: '不顯示' },
 
   // 遊戲畫面
   questionNumber: (current: number, total: number) => `第 ${current} / ${total} 題`,
