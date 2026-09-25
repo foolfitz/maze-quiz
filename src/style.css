@@ -1,0 +1,145 @@
+/* 顏色與 render/theme.ts 的 token 相同（§12.3） */
+:root {
+  --hedge: #2f5e3b;
+  --path: #ead9a6;
+  --ink: #1f2a24;
+  --keeper: #1c6fd1;
+  --correct: #2e9e4f;
+  --wrong: #c4402f;
+  --card: #ffffff;
+  --muted: #5b665f;
+
+  --font-ui: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  /* 題目與選項文字；Andika 字型檔在 M7 加入，之前先用後備字型 */
+  --font-quiz: 'Andika', var(--font-ui);
+
+  color: var(--ink);
+  background: var(--path);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+#app {
+  position: relative;
+  height: 100%;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.card {
+  width: min(100%, 32rem);
+  padding: 2rem;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(31 42 36 / 0.15);
+  text-align: center;
+}
+
+.card h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.card-error {
+  width: min(100%, 44rem);
+  text-align: left;
+  border-top: 6px solid var(--wrong);
+}
+
+.error-list {
+  padding-left: 1.25rem;
+}
+
+.error-list li {
+  margin-block: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+.quiz-text {
+  font-family: var(--font-quiz);
+}
+
+.card h1.title {
+  font-size: 2.25rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.loading-text {
+  margin: 0 0 0.75rem;
+}
+
+progress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--hedge);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.notice {
+  min-height: 1.5em;
+  margin: 1rem 0 0;
+  color: var(--muted);
+}
+
+/* 按鈕：觸控範圍至少 44×44 px（§7.4） */
+.btn {
+  min-width: 44px;
+  min-height: 44px;
+  width: min(100%, 14rem);
+  padding: 0.6rem 1.5rem;
+  border: 2px solid var(--hedge);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--hedge);
+  color: #fff;
+  font-weight: 700;
+}
+
+.btn-secondary {
+  background: var(--card);
+  color: var(--hedge);
+}
+
+/* 看得見的鍵盤焦點（§12.5） */
+.btn:focus-visible {
+  outline: 3px solid var(--keeper);
+  outline-offset: 3px;
+}

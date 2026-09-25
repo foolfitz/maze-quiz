@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "zoo-animals",
+  "title": "Zoo Animals",
+  "locale": "en",
+  "options": {
+    "shuffleQuestions": false
+  },
+  "images": {
+    "elephant":  { "src": "images/elephant.webp",  "alt": "An elephant",   "credit": null },
+    "hippo":     { "src": "images/hippo.webp",     "alt": "A hippo",       "credit": null },
+    "rhino":     { "src": "images/rhino.webp",     "alt": "A rhino",       "credit": null },
+    "bear":      { "src": "images/bear.webp",      "alt": "A brown bear",  "credit": null },
+    "zebra":     { "src": "images/zebra.webp",     "alt": "A zebra",       "credit": null },
+    "horse":     { "src": "images/horse.webp",     "alt": "A horse",       "credit": null },
+    "panda":     { "src": "images/panda.webp",     "alt": "A giant panda", "credit": null },
+    "penguin":   { "src": "images/penguin.webp",   "alt": "A penguin",     "credit": null },
+    "giraffe":   { "src": "images/giraffe.webp",   "alt": "A giraffe",     "credit": null },
+    "camel":     { "src": "images/camel.webp",     "alt": "A camel",       "credit": null },
+    "ostrich":   { "src": "images/ostrich.webp",   "alt": "An ostrich",    "credit": null },
+    "tiger":     { "src": "images/tiger.webp",     "alt": "A tiger",       "credit": null },
+    "lion":      { "src": "images/lion.webp",      "alt": "A lion",        "credit": null },
+    "leopard":   { "src": "images/leopard.webp",   "alt": "A leopard",     "credit": null },
+    "cheetah":   { "src": "images/cheetah.webp",   "alt": "A cheetah",     "credit": null },
+    "fox":       { "src": "images/fox.webp",       "alt": "A red fox",     "credit": null },
+    "crocodile": { "src": "images/crocodile.webp", "alt": "A crocodile",   "credit": null },
+    "turtle":    { "src": "images/turtle.webp",    "alt": "A turtle",      "credit": null },
+    "frog":      { "src": "images/frog.webp",      "alt": "A frog",        "credit": null },
+    "snake":     { "src": "images/snake.webp",     "alt": "A snake",       "credit": null }
+  },
+  "questions": [
+    {
+      "id": "q1",
+      "prompt": "I am very big and gray. I have a long nose called a trunk.",
+      "choices": [
+        { "id": "q1-hippo",    "text": "hippo",    "image": "hippo",    "correct": false },
+        { "id": "q1-elephant", "text": "elephant", "image": "elephant", "correct": true },
+        { "id": "q1-rhino",    "text": "rhino",    "image": "rhino",    "correct": false },
+        { "id": "q1-bear",     "text": "bear",     "image": "bear",     "correct": false }
+      ]
+    },
+    {
+      "id": "q2",
+      "prompt": "I look like a horse, but I have black and white stripes.",
+      "choices": [
+        { "id": "q2-horse",   "text": "horse",   "image": "horse",   "correct": false },
+        { "id": "q2-panda",   "text": "panda",   "image": "panda",   "correct": false },
+        { "id": "q2-zebra",   "text": "zebra",   "image": "zebra",   "correct": true },
+        { "id": "q2-penguin", "text": "penguin", "image": "penguin", "correct": false }
+      ]
+    },
+    {
+      "id": "q3",
+      "prompt": "I am the tallest animal in the world. I have a very long neck.",
+      "choices": [
+        { "id": "q3-camel",   "text": "camel",   "image": "camel",   "correct": false },
+        { "id": "q3-ostrich", "text": "ostrich", "image": "ostrich", "correct": false },
+        { "id": "q3-giraffe", "text": "giraffe", "image": "giraffe", "correct": true }
+      ]
+    },
+    {
+      "id": "q4",
+      "prompt": "I am a big cat. My fur is orange with black stripes.",
+      "choices": [
+        { "id": "q4-lion",    "text": "lion",    "image": "lion",    "correct": false },
+        { "id": "q4-tiger",   "text": "tiger",   "image": "tiger",   "correct": true },
+        { "id": "q4-leopard", "text": "leopard", "image": "leopard", "correct": false },
+        { "id": "q4-cheetah", "text": "cheetah", "image": "cheetah", "correct": false },
+        { "id": "q4-zebra",   "text": "zebra",   "image": "zebra",   "correct": false },
+        { "id": "q4-fox",     "text": "fox",     "image": "fox",     "correct": false }
+      ]
+    },
+    {
+      "id": "q5",
+      "prompt": "I live in rivers. I have a long mouth and lots of sharp teeth.",
+      "choices": [
+        { "id": "q5-hippo",     "text": "hippo",     "image": "hippo",     "correct": false },
+        { "id": "q5-turtle",    "text": "turtle",    "image": "turtle",    "correct": false },
+        { "id": "q5-frog",      "text": "frog",      "image": "frog",      "correct": false },
+        { "id": "q5-crocodile", "text": "crocodile", "image": "crocodile", "correct": true },
+        { "id": "q5-snake",     "text": "snake",     "image": "snake",     "correct": false }
+      ]
+    }
+  ]
+}
