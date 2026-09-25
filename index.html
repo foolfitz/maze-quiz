@@ -8,7 +8,16 @@
   </head>
   <body>
     <div id="app">
-      <!-- 選單與各種畫面都放在覆蓋層裡；迷宮的 canvas 在 M1 加入 -->
+      <div id="game" class="game" hidden>
+        <header class="status-bar">
+          <span id="question-number"></span>
+        </header>
+        <div id="stage" class="stage">
+          <canvas id="maze-canvas"></canvas>
+        </div>
+      </div>
+      <aside id="debug-panel" class="debug-panel" hidden></aside>
+      <!-- 選單與各種畫面都放在覆蓋層裡 -->
       <div id="overlay" class="overlay"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
