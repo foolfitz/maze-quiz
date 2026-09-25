@@ -1,6 +1,6 @@
 # Maze Quiz 迷宮問答：規格書
 
-版本：0.3（2026-09-25；改了什麼見附錄 B）
+版本：0.4（2026-09-25；改了什麼見附錄 B）
 
 ## 0. 給 Claude Code 的工作規則
 
@@ -35,10 +35,13 @@
 | 圖片處理 | sharp（devDependency） | 只在 `scripts/` 使用，不進遊戲本體 |
 | 腳本執行 | tsx（devDependency） | 執行 `scripts/*.ts` |
 | Node 型別 | @types/node（devDependency） | 讓 `scripts/` 與測試裡用到的 Node API 能做型別檢查 |
+| 發布 | GitHub Pages | 由 GitHub Actions 建置，見下方「公開發布」 |
 
 執行期相依套件：**無**。開發環境是 Ubuntu + Node.js LTS。
 
 npm scripts：`dev`、`build`、`preview`、`test`、`typecheck`、`images`（§13）。
+
+**公開發布**：原始碼放在公開的 GitHub repo `foolfitz/maze-quiz`，遊戲發布在 <https://foolfitz.github.io/maze-quiz/>。push 到 `master` 時，`.github/workflows/deploy.yml` 用 Node 24 跑 `npm ci`、`npm test`、`npm run build`（含型別檢查），都通過才發布 `dist/`。repo 是公開的：commit 訊息、SPEC.md、DECISIONS.md 任何人都看得到。程式碼採 MIT 授權（`LICENSE`），照片與字型維持各自的授權（§12.4、§13，說明寫在 `README.md`）。
 
 **瀏覽器相容性**：學校裡還有停在 iPadOS 15 的舊 iPad，遊戲要能在 Safari 15 上執行。
 
@@ -50,8 +53,12 @@ npm scripts：`dev`、`build`、`preview`、`test`、`typecheck`、`images`（§
 
 ```
 maze-quiz/
+├─ README.md                 給一般使用者的說明：玩法、自己出題、授權
+├─ LICENSE                   程式碼的授權（MIT）
 ├─ SPEC.md
 ├─ DECISIONS.md              實作時自行補充的決定
+├─ .github/workflows/
+│  └─ deploy.yml             測試、建置並發布到 GitHub Pages
 ├─ index.html
 ├─ vite.config.ts            相對路徑（base: './'）、關掉 SPA fallback
 ├─ public/
@@ -723,6 +730,8 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
 難度表原本是五級（敵人 1–3 隻、`smartRatio` 0.25–0.95）。改成三級時只留速度的差別，數量與聰明程度都用原本難度 3 的值，所以新的難度 3 就是原本的難度 3，1、2 級沿用原本 1、2 級的速度。
 
 ## 附錄 B：版本紀錄
+
+**0.4（2026-09-25）**：公開到 GitHub：repo `foolfitz/maze-quiz`、GitHub Pages 發布流程、程式碼採 MIT 授權，加上 README 與 LICENSE（§2、§3）。
 
 **0.3（2026-09-25）**：標題畫面的語言、難度、觸控方向鍵收進可折疊的「進階選項」；方向鍵的選項順序改成左邊、右邊、不顯示；拿掉標題畫面的建置時間（§3、§5.1、§5.4、§7.3）。
 

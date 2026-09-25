@@ -265,3 +265,12 @@
 - 語言、難度、觸控方向鍵收進「進階選項」（使用者要求），每次顯示標題畫面時都是收起的 —— 用原生的 `<details>`／`<summary>`，鍵盤（Enter、空白鍵）與螢幕閱讀器都不必另外處理。
 - `summary` 裡再包一層 `span` 來排版，箭頭用 CSS 邊框畫、不加轉場動畫 —— 舊版 Safari 的 `summary` 不一定支援 flex；不用 ▶ 字元（iPad 會顯示成彩色 emoji）。
 - 觸控方向鍵的選項順序改成左邊、右邊、不顯示（使用者要求）；有觸控螢幕的裝置預設仍是右邊 —— localStorage 存的是 `left`／`right`／`off` 文字，已經存的設定不受影響。
+
+## 公開到 GitHub（2026-09-25）
+
+- 放上公開的 GitHub repo `foolfitz/maze-quiz`，用 GitHub Pages 發布（使用者同意）—— 建置結果是純靜態檔案、路徑都是相對的（`base: './'`），放在 `/maze-quiz/` 子路徑下不必改程式。
+- 程式碼用 MIT 授權（使用者選 A）；照片（CC BY-SA）與字型（OFL）維持各自的授權，在 README 說明 —— `LICENSE` 保持標準的 MIT 全文，例外寫在 README，一般人比較容易看懂。
+- commit 的作者 email 保留原樣，不改寫 git 歷史（使用者選 A）。
+- 在 GitHub Actions 上建置，不把 `dist/` 放進 git；先跑 `npm test`，再跑 `npm run build`（裡面有 `tsc`），都通過才發布 —— 壞掉的版本不會上線，也不會有忘了重新建置的問題。
+- Actions 用 Node 24 —— 和開發環境相同，`@types/node` 也是 24 版。
+- README 用正體中文 —— 和 SPEC、DECISIONS 一致。
