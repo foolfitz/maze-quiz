@@ -1,20 +1,31 @@
 import './style.css';
 import { CONFIG } from './config';
-import { bfs, type Passable } from './core/grid';
-import { DEFAULT_MAZE_CONFIG, generateLevelMaze, isCorridor, isZoneCount, type Maze } from './core/maze';
-import { createPlayer, requestDirection, updatePlayer, type Player } from './core/player';
+import {
+  createGame,
+  debugCompleteLevel,
+  levelMaze,
+  startGame,
+  steer,
+  stepGame,
+  type GameState,
+  type Level,
+} from './core/game';
+import { bfs } from './core/grid';
+import { isCorridor } from './core/maze';
 import { seedFromText } from './core/rng';
-import type { Direction } from './core/types';
+import { computeScore } from './core/scoring';
+import type { Direction, Phase } from './core/types';
 import { attachKeyboard } from './input/keyboard';
 import { attachPointer } from './input/pointer';
 import { loadQuiz, type LoadedQuiz } from './loader';
 import { startLoop } from './loop';
-import { Renderer, type DebugLayer, type ZoneLabel } from './render/renderer';
+import { Renderer, type DebugLayer, type ZoneFeedback, type ZoneLabel } from './render/renderer';
 import { ZOO_THEME } from './render/theme';
 import { renderDebugPanel, updateDebugFps, updateDebugPlayer } from './ui/debugPanel';
 import { requireElement } from './ui/dom';
+import { fitPrompt, showPrompt } from './ui/promptBar';
 import { showRipple } from './ui/ripple';
-import { showError, showLoading, showTitle, showTitleNotice } from './ui/screens';
+import { showError, showLoading, showResults, showTitle, showTitleNotice } from './ui/screens';
 import { STRINGS } from './ui/strings';
 import { parseUrlParams, quizJsonPath, type UrlParams } from './urlParams';
 
@@ -41,17 +52,8 @@ async function start(): Promise<void> {
 
   const data = result.data;
   for (const warning of data.warnings) console.warn(`[題組警告] ${warning}`);
-
   document.title = `${data.quiz.title} – ${STRINGS.appName}`;
-  const notYet = (): void => showTitleNotice(overlay, STRINGS.notImplemented);
-  showTitle(overlay, data.quiz, {
-    onStart: () => {
-      overlay.hidden = true;
-      startGame(data, params);
-    },
-    onLeaderboard: notYet,
-    onCredits: notYet,
-  });
+  runApp(data, params, overlay);
 }
 
 /** 沒有指定 ?seed 時隨機產生；只在這裡用 Math.random，core 一律用注入的種子 */
@@ -59,70 +61,82 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 0x1_0000_0000);
 }
 
-/** 一關的靜態資料：迷宮與答案區顯示的內容 */
-interface Level {
-  readonly maze: Maze;
+/** 一關裡不會變的顯示資料，每關算一次 */
+interface LevelView {
+  readonly level: Level;
   readonly labels: readonly ZoneLabel[];
   readonly debug: DebugLayer | null;
 }
 
-/**
- * M2：在迷宮裡操作玩家移動（鍵盤、滑鼠、觸控）。
- * 除錯模式下按 N 換到下一關。答案判定與關卡流程在 M3 移到 core/game.ts。
- */
-function startGame(data: LoadedQuiz, params: UrlParams): void {
+/** 走進園區時要顯示的 ✓ ✗ */
+function feedbackFor(phase: Phase, level: Level): ZoneFeedback | null {
+  if (level.enteredZone === null) return null;
+  if (phase.kind === 'wrongFeedback') return { zoneIndex: level.enteredZone, kind: 'wrong' };
+  if (phase.kind === 'levelComplete') return { zoneIndex: level.enteredZone, kind: 'correct' };
+  return null;
+}
+
+/** 組裝畫面、輸入與遊戲迴圈。遊戲規則都在 core/game.ts，這裡只負責把狀態顯示出來。 */
+function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): void {
   const { quiz } = data;
   const gameRoot = requireElement('game', HTMLDivElement);
   const stage = requireElement('stage', HTMLDivElement);
   const canvas = requireElement('maze-canvas', HTMLCanvasElement);
+  const stageMessage = requireElement('stage-message', HTMLDivElement);
   const questionNumber = requireElement('question-number', HTMLSpanElement);
+  const promptText = requireElement('prompt-text', HTMLParagraphElement);
   const debugRoot = requireElement('debug-panel', HTMLElement);
 
-  const seed = params.seed === null ? randomSeed() : seedFromText(params.seed);
-  const config = DEFAULT_MAZE_CONFIG;
+  const fixedSeed = params.seed === null ? null : seedFromText(params.seed);
+  const mazeConfig = CONFIG.maze;
   const renderer = new Renderer(canvas, ZOO_THEME);
 
-  // prefers-reduced-motion：關閉碰壁抖動（漣漪由 CSS 關閉）
+  // prefers-reduced-motion：關閉碰壁抖動（漣漪在 ui/ripple.ts 處理）
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   renderer.reducedMotion = reducedMotion.matches;
   reducedMotion.addEventListener('change', () => {
     renderer.reducedMotion = reducedMotion.matches;
   });
 
-  let levelIndex = 0;
-  let level: Level | null = null;
-  let player: Player | null = null;
+  // 每一局用新的種子；網址指定了 ?seed 時每局都一樣，方便重現
+  const newGame = (): GameState => createGame(quiz, data.options, fixedSeed ?? randomSeed());
+  let state = newGame();
+  let view: LevelView | null = null;
+  let shownPhase: Phase['kind'] | null = null;
 
-  // M2 還沒有答案判定，玩家可以走進園區；M3 會加上判定與封門
-  const passable: Passable = (tile) => level?.maze.grid.isFloor(tile) ?? false;
+  // ─── 畫面切換 ───────────────────────────────────────────────
 
-  const showLevel = (index: number): void => {
-    const question = quiz.questions[index];
-    if (question === undefined) return;
-    const zoneCount = question.choices.length;
-    // 題組驗證已經保證選項數是 2–6，這裡再用型別守衛讓 TypeScript 也知道
-    if (!isZoneCount(zoneCount)) throw new Error(`第 ${index + 1} 題的選項數 ${zoneCount} 不在 2–6 之間`);
+  const showTitleScreen = (): void => {
+    state = newGame();
+    view = null;
+    shownPhase = null;
+    gameRoot.hidden = true;
+    debugRoot.hidden = true;
+    showTitle(overlay, quiz, {
+      onStart: () => {
+        startGame(state);
+        overlay.hidden = true;
+        gameRoot.hidden = false;
+      },
+      onLeaderboard: () => showTitleNotice(overlay, STRINGS.notImplemented),
+      onCredits: () => showTitleNotice(overlay, STRINGS.notImplemented),
+    });
+  };
 
-    levelIndex = index;
-    const result = generateLevelMaze(seed, index, zoneCount, config);
-    const { maze } = result;
-    const choices = maze.zones.map((zone) => question.choices[zone.choiceIndex]);
+  /** 換關時更新題號、題目列與除錯資訊 */
+  const showLevel = (level: Level): LevelView => {
+    const maze = levelMaze(level);
+    const choices = maze.zones.map((zone) => level.question.choices[zone.choiceIndex]);
     const distances = params.debug ? bfs(maze.grid, maze.start, (tile) => isCorridor(maze, tile)) : null;
 
-    level = {
-      maze,
-      labels: choices.map((choice) => ({ text: choice?.text ?? '' })),
-      debug:
-        distances === null ? null : { distances, correct: choices.map((choice) => choice?.correct ?? false) },
-    };
-    player = createPlayer(maze.start);
-    questionNumber.textContent = STRINGS.questionNumber(index + 1, quiz.questions.length);
+    questionNumber.textContent = STRINGS.questionNumber(state.levelIndex + 1, state.order.length);
+    showPrompt(promptText, level.question.prompt, quiz.locale);
 
     if (distances !== null) {
       renderDebugPanel(debugRoot, {
-        baseSeed: seed,
-        levelIndex: index,
-        result,
+        baseSeed: state.seed,
+        levelIndex: state.levelIndex,
+        result: level.mazeResult,
         zoneDistances: maze.zones.map((zone, i) => ({
           label: choices[i]?.text ?? String(i),
           distance: distances.get(zone.outside),
@@ -130,12 +144,31 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
         warnings: data.warnings,
       });
     }
+
+    return {
+      level,
+      labels: choices.map((choice) => ({ text: choice?.text ?? '' })),
+      debug:
+        distances === null ? null : { distances, correct: choices.map((choice) => choice?.correct ?? false) },
+    };
   };
 
-  const steer = (direction: Direction): void => {
-    if (player === null) return;
-    if (requestDirection(player, direction, passable) === 'bumped') {
-      renderer.bump(direction, performance.now());
+  /** 狀態改變時更新畫面上的 DOM 部分 */
+  const onPhaseChanged = (phase: Phase): void => {
+    stageMessage.hidden = phase.kind !== 'levelIntro';
+    if (phase.kind === 'levelIntro') stageMessage.textContent = STRINGS.ready;
+    if (phase.kind === 'results') {
+      showResults(overlay, computeScore(state.results), state.order.length, showTitleScreen);
+    }
+  };
+
+  /** 每幀檢查狀態，有變才動 DOM */
+  const syncUi = (): void => {
+    const { level } = state;
+    if (level !== null && view?.level !== level) view = showLevel(level);
+    if (state.phase.kind !== shownPhase) {
+      shownPhase = state.phase.kind;
+      onPhaseChanged(state.phase);
     }
   };
 
@@ -145,7 +178,8 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
     const style = getComputedStyle(stage);
     const width = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
     const height = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-    renderer.layout(width, height, config.width, config.height);
+    renderer.layout(width, height, mazeConfig.width, mazeConfig.height);
+    fitPrompt(promptText);
   };
   new ResizeObserver(relayout).observe(stage);
 
@@ -165,20 +199,24 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
 
   // ─── 輸入 ───────────────────────────────────────────────────
 
-  attachKeyboard(window, { onDirection: steer });
+  const onDirection = (direction: Direction): void => {
+    if (steer(state, direction) === 'bumped') renderer.bump(direction, performance.now());
+  };
+
+  attachKeyboard(window, { onDirection });
   attachPointer(
     stage,
     {
       screenToTile: (x, y) => renderer.screenToTile(x, y),
-      playerPosition: () => player,
+      playerPosition: () => (state.phase.kind === 'playing' ? state.level?.player ?? null : null),
       deadZoneTiles: CONFIG.player.pointerDeadZoneTiles,
     },
-    { onDirection: steer, onPress: (x, y) => showRipple(stage, x, y) },
+    { onDirection, onPress: (x, y) => showRipple(stage, x, y) },
   );
 
   if (params.debug) {
     window.addEventListener('keydown', (event) => {
-      if (event.code === 'KeyN' && !event.repeat) showLevel((levelIndex + 1) % quiz.questions.length);
+      if (event.code === 'KeyN' && !event.repeat) debugCompleteLevel(state);
     });
   }
 
@@ -187,19 +225,33 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
   let shownFps = -1;
   const loop = startLoop(
     {
-      update: (dtMs) => {
-        if (player !== null) updatePlayer(player, dtMs, passable);
-      },
+      update: (dtMs) => stepGame(state, dtMs),
       render: (nowMs) => {
-        if (level === null || player === null) return;
-        renderer.draw({ ...level, player }, nowMs);
+        syncUi();
+        const { level } = state;
+        if (level === null || view === null || gameRoot.hidden) return;
+        renderer.draw(
+          {
+            maze: levelMaze(level),
+            labels: view.labels,
+            sealed: level.sealed,
+            feedback: feedbackFor(state.phase, level),
+            debug: view.debug,
+            player: level.player,
+          },
+          nowMs,
+        );
+
         if (params.debug) {
           if (loop.fps() !== shownFps) {
             shownFps = loop.fps();
             updateDebugFps(debugRoot, shownFps);
           }
-          const { x, y, dir, pendingDir } = player;
-          updateDebugPlayer(debugRoot, STRINGS.debug.player(x.toFixed(2), y.toFixed(2), dir ?? '—', pendingDir ?? '—'));
+          const { x, y, dir, pendingDir } = level.player;
+          updateDebugPlayer(
+            debugRoot,
+            STRINGS.debug.player(x.toFixed(2), y.toFixed(2), dir ?? '—', pendingDir ?? '—'),
+          );
         }
       },
     },
@@ -207,8 +259,7 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
     CONFIG.loop.maxFrameMs,
   );
 
-  gameRoot.hidden = false;
-  showLevel(0);
+  showTitleScreen();
 }
 
 void start();

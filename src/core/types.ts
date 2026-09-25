@@ -27,3 +27,12 @@ export type Phase =
 export function assertNever(value: never): never {
   throw new Error(`未處理的值：${JSON.stringify(value)}`);
 }
+
+/** 逐題結果（§11.1） */
+export type QuestionStatus = 'firstTry' | 'retry' | 'unanswered';
+
+export interface QuestionResult {
+  readonly questionId: string;
+  readonly status: QuestionStatus;
+  readonly wrongChoiceIds: readonly string[]; // 依答錯的先後順序
+}

@@ -25,9 +25,18 @@ export interface PlayerView extends TilePoint {
   readonly pendingDir: Direction | null;
 }
 
+/** 走進園區時的大 ✓ ✗ */
+export interface ZoneFeedback {
+  readonly zoneIndex: number;
+  readonly kind: 'correct' | 'wrong';
+}
+
 export interface Scene {
   readonly maze: Maze;
   readonly labels: readonly ZoneLabel[];
+  /** 各園區是否已封住，順序與 maze.zones 相同；封門時會換成新陣列 */
+  readonly sealed: readonly boolean[];
+  readonly feedback: ZoneFeedback | null;
   readonly debug: DebugLayer | null;
   readonly player: PlayerView;
 }
@@ -49,6 +58,7 @@ const DIRECTION_ANGLES: Readonly<Record<Direction, number>> = {
 interface StaticLayerKey {
   readonly maze: Maze;
   readonly labels: readonly ZoneLabel[];
+  readonly sealed: readonly boolean[];
   readonly debug: DebugLayer | null;
   readonly tileSize: number;
   readonly dpr: number;
@@ -123,7 +133,16 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.staticLayer, 0, 0);
     ctx.restore();
+
     this.drawPlayer(scene.player, nowMs);
+
+    // 走進園區時的大 ✓ ✗，蓋在玩家上面
+    const zone = scene.feedback === null ? undefined : scene.maze.zones[scene.feedback.zoneIndex];
+    if (scene.feedback !== null && zone !== undefined) {
+      const { rect } = zone;
+      const { x, y } = this.center({ x: rect.x + (rect.width - 1) / 2, y: rect.y + (rect.height - 1) / 2 });
+      this.drawMark(ctx, x, y, this.tileSize * 0.95, scene.feedback.kind);
+    }
   }
 
   // ─── 靜態圖層 ───────────────────────────────────────────────
@@ -132,6 +151,7 @@ export class Renderer {
     const key: StaticLayerKey = {
       maze: scene.maze,
       labels: scene.labels,
+      sealed: scene.sealed,
       debug: scene.debug,
       tileSize: this.tileSize,
       dpr: this.dpr,
@@ -141,6 +161,7 @@ export class Renderer {
       old !== null &&
       old.maze === key.maze &&
       old.labels === key.labels &&
+      old.sealed === key.sealed &&
       old.debug === key.debug &&
       old.tileSize === key.tileSize &&
       old.dpr === key.dpr
@@ -162,7 +183,9 @@ export class Renderer {
     }
 
     scene.maze.zones.forEach((zone, i) => {
-      this.drawZoneCard(ctx, zone.rect, scene.labels[i]?.text ?? '');
+      const sealed = scene.sealed[i] ?? false;
+      this.drawZoneCard(ctx, zone.rect, scene.labels[i]?.text ?? '', sealed);
+      if (sealed) this.drawClosedGate(ctx, zone.door, zone.doorSide);
     });
 
     if (scene.debug !== null) this.drawDebug(ctx, scene.maze, scene.debug);
@@ -173,7 +196,7 @@ export class Renderer {
     return { x: (tile.x + 0.5) * this.tileSize, y: (tile.y + 0.5) * this.tileSize };
   }
 
-  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, text: string): void {
+  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, text: string, sealed: boolean): void {
     const { theme } = this;
     const s = this.tileSize;
     const pad = s * 0.12;
@@ -196,6 +219,55 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(fitted.text, x + w / 2, y + h / 2);
+
+    // 答錯封住的園區：變暗並保留 ✗（§8）；✗ 放在角落，選項文字仍看得到
+    if (sealed) {
+      roundedRectPath(ctx, x, y, w, h, s * 0.25);
+      ctx.fillStyle = 'rgba(31, 42, 36, 0.45)';
+      ctx.fill();
+      this.drawMark(ctx, x + w - s * 0.32, y + s * 0.32, s * 0.3, 'wrong');
+    }
+  }
+
+  /** 關上的柵門：門的位置畫成步道底色，再畫一道橫過通道的柵欄 */
+  private drawClosedGate(ctx: CanvasRenderingContext2D, door: Tile, side: Direction): void {
+    const { theme } = this;
+    const s = this.tileSize;
+    const x = door.x * s;
+    const y = door.y * s;
+    ctx.fillStyle = theme.path;
+    ctx.fillRect(x, y, s, s);
+
+    // 通道是水平的（門開在左右兩側）時，柵欄是直的；反之是橫的
+    const across = side === 'left' || side === 'right' ? 'vertical' : 'horizontal';
+    const thickness = s * 0.3;
+    ctx.fillStyle = theme.wrong;
+    if (across === 'vertical') ctx.fillRect(x + (s - thickness) / 2, y, thickness, s);
+    else ctx.fillRect(x, y + (s - thickness) / 2, s, thickness);
+
+    // 柵欄上的白色橫條，讓它看起來像柵門而不只是一條紅線
+    ctx.fillStyle = '#FFFFFF';
+    for (const t of [0.3, 0.7]) {
+      if (across === 'vertical') ctx.fillRect(x + (s - thickness) / 2, y + s * t - s * 0.04, thickness, s * 0.08);
+      else ctx.fillRect(x + s * t - s * 0.04, y + (s - thickness) / 2, s * 0.08, thickness);
+    }
+  }
+
+  /** 圓形的 ✓ 或 ✗ 標記。對錯不只靠顏色，一律搭配符號（§12.5）。 */
+  private drawMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, kind: 'correct' | 'wrong'): void {
+    const { theme } = this;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = kind === 'correct' ? theme.correct : theme.wrong;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, radius * 0.12);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold ${Math.round(radius * 1.25)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(kind === 'correct' ? '✓' : '✗', cx, cy + radius * 0.06);
   }
 
   /** 單行文字：先用最大字級，太寬就依比例縮小；縮到最小字級還放不下就截斷加「…」 */
@@ -256,19 +328,12 @@ export class Renderer {
       ctx.fillText(String(d), x, y);
     }
 
-    // 各園區的對錯：顏色之外一定搭配 ✓ ✗ 符號（§12.5）
+    // 各園區的對錯（左上角，不和封住的 ✗ 重疊）
     maze.zones.forEach((zone, i) => {
       const correct = debug.correct[i] ?? false;
-      const cx = (zone.rect.x + zone.rect.width) * s - s * 0.3;
-      const cy = zone.rect.y * s + s * 0.3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, s * 0.26, 0, Math.PI * 2);
-      ctx.fillStyle = correct ? theme.correct : theme.wrong;
-      ctx.fill();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = `bold ${Math.floor(s * 0.34)}px system-ui, sans-serif`;
-      ctx.fillText(correct ? '✓' : '✗', cx, cy + 1);
+      this.drawMark(ctx, zone.rect.x * s + s * 0.3, zone.rect.y * s + s * 0.3, s * 0.22, correct ? 'correct' : 'wrong');
     });
+    ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
 
     // 敵人出生點
     ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;

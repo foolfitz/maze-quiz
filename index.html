@@ -14,7 +14,11 @@
         </header>
         <div id="stage" class="stage">
           <canvas id="maze-canvas"></canvas>
+          <div id="stage-message" class="stage-message" aria-live="polite" hidden></div>
         </div>
+        <footer class="prompt-bar">
+          <p id="prompt-text" class="prompt-text quiz-text" aria-live="polite"></p>
+        </footer>
       </div>
       <aside id="debug-panel" class="debug-panel" hidden></aside>
       <!-- 選單與各種畫面都放在覆蓋層裡 -->

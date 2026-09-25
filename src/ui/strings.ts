@@ -20,6 +20,12 @@ export const STRINGS = {
 
   // 遊戲畫面
   questionNumber: (current: number, total: number) => `第 ${current} / ${total} 題`,
+  ready: '預備',
+
+  // 結算畫面（§11.1）
+  resultsTitle: '成績',
+  firstTryScore: (score: number, total: number) => `一次答對 ${score} / ${total} 題`,
+  playAgain: '再玩一次',
 
   // 載入失敗的原因
   invalidQuizParam: (value: string) =>
@@ -46,7 +52,7 @@ export const STRINGS = {
     ratio: (ratio: string) => `最遠 ÷ 最近 = ${ratio}`,
     fallback: '⚠ 迷宮沒有完全符合條件，採用最接近的一張：',
     warnings: (count: number) => `題組警告（${count}）`,
-    shortcuts: '快捷鍵　N：下一關',
+    shortcuts: '快捷鍵　N：直接過關',
     violation: {
       disconnected: (count: number) => `有 ${count} 格地板走不到`,
       badDoor: (zone: string) => `答案區「${zone}」的門不正確`,

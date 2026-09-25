@@ -7,6 +7,7 @@ import { STRINGS } from './strings';
 function showCard(root: HTMLElement, children: readonly Node[], className = ''): void {
   const card = el('div', { className: `card ${className}`.trim(), children });
   root.replaceChildren(card);
+  root.classList.remove('backdrop');
   root.hidden = false;
 }
 
@@ -70,4 +71,16 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
 export function showTitleNotice(root: HTMLElement, message: string): void {
   const notice = root.querySelector('#title-notice');
   if (notice !== null) notice.textContent = message;
+}
+
+/** 簡易結算（M3）：一次答對的題數與「再玩一次」。逐題回顧在 M6。 */
+export function showResults(root: HTMLElement, score: number, total: number, onPlayAgain: () => void): void {
+  const again = button(STRINGS.playAgain, onPlayAgain, 'primary');
+  showCard(root, [
+    el('h1', { text: STRINGS.resultsTitle }),
+    el('p', { className: 'score', text: STRINGS.firstTryScore(score, total) }),
+    el('div', { className: 'actions', children: [again] }),
+  ]);
+  root.classList.add('backdrop');
+  again.focus();
 }

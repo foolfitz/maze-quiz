@@ -49,6 +49,17 @@ body {
   display: none;
 }
 
+/* 疊在遊戲畫面上時，加一層半透明底色 */
+.overlay.backdrop {
+  background: rgb(234 217 166 / 0.85);
+}
+
+.score {
+  margin: 0.5rem 0 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
 .card {
   width: min(100%, 32rem);
   padding: 2rem;
@@ -150,7 +161,7 @@ progress {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
 }
 
 .game[hidden] {
@@ -183,6 +194,42 @@ progress {
 
 #maze-canvas {
   display: block;
+}
+
+/* 迷宮中央的提示，例如「預備」；往上挪一點，不要蓋住起點上的玩家 */
+.stage-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% - 1.6em));
+  padding: 0.3em 1.2em;
+  background: rgb(255 255 255 / 0.92);
+  border-radius: 999px;
+  box-shadow: 0 2px 12px rgb(31 42 36 / 0.2);
+  font-size: clamp(1.5rem, 5vmin, 2.5rem);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.stage-message[hidden] {
+  display: none;
+}
+
+/* 題目列（§12.1）：靠左對齊，最多兩行，放不下時由 ui/promptBar.ts 縮小字級 */
+.prompt-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 4.5rem;
+  padding: 8px 16px 16px;
+}
+
+.prompt-text {
+  flex: 1;
+  margin: 0;
+  line-height: 1.3;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 /* 觸控漣漪 */
