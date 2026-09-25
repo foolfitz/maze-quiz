@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock } from './format';
+import { formatBuildTime, formatClock } from './format';
 
 describe('formatClock', () => {
   it('顯示成 m:ss', () => {
@@ -14,5 +14,17 @@ describe('formatClock', () => {
     expect(formatClock(59_001, 'up')).toBe('1:00');
     expect(formatClock(1, 'up')).toBe('0:01');
     expect(formatClock(0, 'up')).toBe('0:00');
+  });
+});
+
+describe('formatBuildTime', () => {
+  it('顯示成當地時間的年月日與時分', () => {
+    // 用當地時間建立，測試結果不受執行環境的時區影響
+    const local = new Date(2026, 8, 5, 7, 3);
+    expect(formatBuildTime(local.toISOString())).toBe('2026-09-05 07:03');
+  });
+
+  it('不是合法的時間就原樣顯示', () => {
+    expect(formatBuildTime('dev')).toBe('dev');
   });
 });

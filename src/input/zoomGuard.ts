@@ -12,6 +12,10 @@ const DOUBLE_TAP_MS = 400;
 const DOUBLE_TAP_DISTANCE_PX = 60;
 /** 手指從按下到放開移動超過這個距離就是滑動（例如捲動清單），不算點擊 */
 const TAP_SLOP_PX = 12;
+/** 畫面比例超過這個值就算已經被放大了 */
+const ZOOMED_SCALE = 1.01;
+/** 點下去要照常觸發 click 的元素 */
+const INTERACTIVE_SELECTOR = 'button, a, input, label, select, textarea';
 
 /** 這一下和上一下合起來，會不會被 Safari 當成「點兩下放大」 */
 export function isDoubleTap(previous: Tap | null, current: Tap): boolean {
@@ -25,19 +29,29 @@ function distance(a: { readonly x: number; readonly y: number }, b: { readonly x
 }
 
 /**
- * 阻止兩指縮放與點兩下放大（§7.4）。主要靠 CSS 的 touch-action；
+ * 畫面是不是已經被放大了。擋不住而被放大時，所有防縮放都要暫停，
+ * 使用者才能用兩指或點兩下縮回來（試玩時被放大後就縮不回來）。
+ */
+function isZoomedIn(view: Window | null): boolean {
+  return (view?.visualViewport?.scale ?? 1) > ZOOMED_SCALE;
+}
+
+/**
+ * 阻止兩指縮放與點兩下放大（§7.4），整頁都有效。主要靠 CSS 的 touch-action；
  * iPad 的 Safari 不一定照 touch-action 處理，所以再用事件擋一次：
  * - gesturestart／gesturechange 是 Safari 專用的縮放手勢事件
  * - 兩根以上手指的 touchstart／touchmove 取消預設動作
- * - 點兩下：第二下的 touchend 取消預設動作，Safari 就不會放大（試玩時在迷宮以外的地方點兩下會放大）。
- *   只取消 touchend，Pointer Events 已經送出，迷宮與方向鍵的操作不受影響；
- *   代價是很快連點兩下按鈕時第二下不算，這正好也避免誤按兩次。輸入框裡照常，才能點兩下選字。
+ * - 點兩下：第二下的 touchend 取消預設動作。遊戲畫面另外由 holdTouches() 擋得更徹底；
+ *   這一層是給標題、結算等要能捲動的畫面用的。輸入框裡照常，才能點兩下選字。
  * 取消預設動作的監聽都必須是 passive: false。
  * viewport 的 user-scalable=no 在 Android 有效，但 iPad 的 Safari 不理它，所以幾層一起用。
  * 回傳解除監聽的函式。
  */
 export function preventZoom(target: Document): () => void {
-  const onGesture = (event: Event): void => event.preventDefault();
+  const zoomed = (): boolean => isZoomedIn(target.defaultView);
+  const onGesture = (event: Event): void => {
+    if (!zoomed()) event.preventDefault();
+  };
 
   // 單指按下的位置，用來分辨點擊與滑動；上一次點擊，用來判斷點兩下
   let pressedAt: { readonly x: number; readonly y: number } | null = null;
@@ -46,7 +60,7 @@ export function preventZoom(target: Document): () => void {
   const onTouchStart = (event: TouchEvent): void => {
     // 第二根手指一放上來就取消，縮放手勢根本不會開始
     if (event.touches.length > 1) {
-      event.preventDefault();
+      if (!zoomed()) event.preventDefault();
       pressedAt = null;
       return;
     }
@@ -55,7 +69,7 @@ export function preventZoom(target: Document): () => void {
   };
 
   const onTouchMove = (event: TouchEvent): void => {
-    if (event.touches.length > 1) event.preventDefault();
+    if (event.touches.length > 1 && !zoomed()) event.preventDefault();
   };
 
   const onTouchEnd = (event: TouchEvent): void => {
@@ -72,7 +86,9 @@ export function preventZoom(target: Document): () => void {
     // 一直連點時每一下都和前一下比，第三下、第四下也擋得住
     const previous = lastTap;
     lastTap = tap;
-    if (isDoubleTap(previous, tap) && event.cancelable && !isTextInput(event.target)) event.preventDefault();
+    if (isDoubleTap(previous, tap) && event.cancelable && !isTextInput(event.target) && !zoomed()) {
+      event.preventDefault();
+    }
   };
 
   target.addEventListener('gesturestart', onGesture);
@@ -87,4 +103,21 @@ export function preventZoom(target: Document): () => void {
     target.removeEventListener('touchmove', onTouchMove);
     target.removeEventListener('touchend', onTouchEnd);
   };
+}
+
+/**
+ * 遊戲畫面（狀態列、迷宮舞台、題目列、方向鍵）：手指一按下就取消預設動作。
+ * Safari 就不會把它當成點兩下放大、捲動或選字——只設 CSS 的 touch-action: none 時，
+ * 試玩的 iOS 裝置在迷宮旁的留白點兩下照樣會放大。
+ * 迷宮與方向鍵都用 Pointer Events 操作，Pointer Events 在 touch 事件之前就送出，不受影響；
+ * 按鈕（暫停）除外，取消了就不會觸發 click。已經被放大時不擋，讓使用者縮回來。
+ * 回傳解除監聽的函式。
+ */
+export function holdTouches(element: HTMLElement): () => void {
+  const onTouchStart = (event: TouchEvent): void => {
+    const onControl = event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR) !== null;
+    if (!onControl && event.cancelable && !isZoomedIn(element.ownerDocument.defaultView)) event.preventDefault();
+  };
+  element.addEventListener('touchstart', onTouchStart, { passive: false });
+  return () => element.removeEventListener('touchstart', onTouchStart);
 }

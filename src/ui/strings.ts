@@ -18,6 +18,7 @@ export const STRINGS = {
   questionCount: (count: number) => `共 ${count} 題`,
   dpadSetting: '觸控方向鍵',
   dpadSides: { right: '右邊', left: '左邊', off: '不顯示' },
+  buildInfo: (time: string) => `版本 ${time}`,
 
   // 遊戲畫面
   questionNumber: (current: number, total: number) => `第 ${current} / ${total} 題`,

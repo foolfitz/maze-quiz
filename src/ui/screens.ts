@@ -1,6 +1,7 @@
 import type { ImageAsset, QuizFile } from '../core/quiz';
 import { DPAD_SIDES, type DpadSide } from '../storage/preferences';
 import { button, el } from './dom';
+import { formatBuildTime } from './format';
 import { STRINGS } from './strings';
 
 /** 覆蓋層上的各個畫面。每次呼叫都會替換掉 root 裡原本的內容。 */
@@ -66,6 +67,8 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
       ],
     }),
     dpadSetting(handlers.dpadSide, handlers.onDpadSideChange),
+    // 建置時間：試玩時確認裝置拿到的是新版
+    el('p', { className: 'build-info', text: STRINGS.buildInfo(formatBuildTime(import.meta.env.VITE_BUILD_TIME)) }),
   ]);
   startButton.focus();
 }

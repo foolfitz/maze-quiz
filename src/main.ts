@@ -36,7 +36,7 @@ import type { Direction, Phase } from './core/types';
 import { attachDpad } from './input/dpad';
 import { attachKeyboard, isTextInput } from './input/keyboard';
 import { attachPointer } from './input/pointer';
-import { preventZoom } from './input/zoomGuard';
+import { holdTouches, preventZoom } from './input/zoomGuard';
 import { loadQuiz, type LoadedQuiz } from './loader';
 import { startLoop } from './loop';
 import {
@@ -412,6 +412,8 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
     if (document.hidden) pauseGame(state);
   });
   attachDpad(dpad, { onDirection });
+  // 遊戲畫面上手指一按下就取消預設動作，Safari 才不會把它當成點兩下放大
+  holdTouches(gameRoot);
   attachPointer(
     stage,
     {

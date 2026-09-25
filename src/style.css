@@ -406,6 +406,13 @@ body {
   color: var(--muted);
 }
 
+/* 標題畫面最下面的建置時間 */
+.build-info {
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .loading-text {
   margin: 0 0 0.75rem;
 }
