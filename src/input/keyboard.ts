@@ -14,8 +14,10 @@ const KEY_DIRECTIONS: Readonly<Record<string, Direction>> = {
 
 export interface KeyboardHandlers {
   readonly onDirection: (direction: Direction) => void;
-  /** Esc 或 P；M6 才接上暫停 */
-  readonly onPause?: () => void;
+  /** Esc 或 P：暫停或繼續 */
+  readonly onPause: () => void;
+  /** 現在是不是在玩；不在玩時方向鍵交給瀏覽器，例如捲動很長的結算與逐題回顧 */
+  readonly isPlaying: () => boolean;
 }
 
 /** 開始監聽鍵盤，回傳解除監聽的函式 */
@@ -25,14 +27,14 @@ export function attachKeyboard(target: Window, handlers: KeyboardHandlers): () =
     if (event.ctrlKey || event.metaKey || event.altKey || isTextInput(event.target)) return;
 
     const direction = KEY_DIRECTIONS[event.code];
-    if (direction !== undefined) {
+    if (direction !== undefined && handlers.isPlaying()) {
       event.preventDefault(); // 避免方向鍵捲動頁面
       // 按住時的自動重複不算新的指令
       if (!event.repeat) handlers.onDirection(direction);
       return;
     }
     if ((event.code === 'Escape' || event.code === 'KeyP') && !event.repeat) {
-      handlers.onPause?.();
+      handlers.onPause();
     }
   };
 

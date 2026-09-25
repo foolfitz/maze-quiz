@@ -9,15 +9,6 @@ const DPAD_KEY = 'maze-quiz:dpad';
 /** 讀寫偏好設定只需要這兩個方法；測試時可以傳入簡單的替身物件 */
 export type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
-/** 取得 localStorage；隱私瀏覽或網站資料被封鎖時，光是讀取 window.localStorage 就可能丟錯，這時回傳 null */
-export function getLocalStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 /** 讀取方向鍵的位置；沒存過、值不認得或無法讀取時用 fallback */
 export function loadDpadSide(storage: PreferenceStorage | null, fallback: DpadSide): DpadSide {
   try {

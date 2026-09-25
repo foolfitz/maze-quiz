@@ -31,7 +31,7 @@ import {
 } from './player';
 import type { Difficulty, GameOptions, Question, QuizFile } from './quiz';
 import { createRng, hashSeed, type Rng } from './rng';
-import { assertNever, type Direction, type Phase, type QuestionResult } from './types';
+import { assertNever, type Direction, type Phase, type PlayPhase, type QuestionResult } from './types';
 
 // ─── 設定 ────────────────────────────────────────────────────
 
@@ -176,7 +176,7 @@ export function stepGame(state: GameState, dtMs: number): void {
 
     case 'playing': {
       if (level === null) return;
-      state.elapsedMs += dtMs;
+      if (tickClock(state, dtMs)) return;
       updatePlayer(level.player, dtMs, playerPassable(levelMaze(level)), config.player);
       judgeZone(state, level);
       if (state.phase.kind !== 'playing') return; // 走進園區了，全場靜止
@@ -197,7 +197,7 @@ export function stepGame(state: GameState, dtMs: number): void {
     }
 
     case 'wrongFeedback': {
-      state.elapsedMs += dtMs;
+      if (tickClock(state, dtMs)) return;
       const remainingMs = phase.remainingMs - dtMs;
       if (remainingMs > 0) state.phase = { ...phase, remainingMs };
       else if (level !== null) sealEnteredZone(state, level);
@@ -205,12 +205,12 @@ export function stepGame(state: GameState, dtMs: number): void {
     }
 
     case 'lifeLost': {
-      // 受傷動畫期間全場靜止，但照樣計時（§5.2）
-      state.elapsedMs += dtMs;
+      // 受傷動畫期間全場靜止，但照樣計時（§5.2）；已經沒有命時結果就是「沒有命了」，不會變成時間到
+      if (tickClock(state, dtMs, state.lives > 0)) return;
       const remainingMs = phase.remainingMs - dtMs;
       if (remainingMs > 0) state.phase = { ...phase, remainingMs };
       else if (level !== null && state.lives > 0) respawn(state, level);
-      else endGame(state);
+      else endGame(state, 'gameOver');
       return;
     }
 
@@ -224,6 +224,58 @@ export function stepGame(state: GameState, dtMs: number): void {
 
     default:
       assertNever(phase);
+  }
+}
+
+/** 可以暫停的狀態（§5.1 的 PlayPhase）；型別守衛讓 TypeScript 知道回傳 true 時 phase 是 PlayPhase */
+export function isPlayPhase(phase: Phase): phase is PlayPhase {
+  switch (phase.kind) {
+    case 'levelIntro':
+    case 'playing':
+    case 'wrongFeedback':
+    case 'lifeLost':
+    case 'levelComplete':
+      return true;
+    case 'loading':
+    case 'error':
+    case 'title':
+    case 'paused':
+    case 'gameOver':
+    case 'timeUp':
+    case 'results':
+      return false;
+    default:
+      return assertNever(phase);
+  }
+}
+
+/** 暫停：只有 PlayPhase 可以暫停，並記住要回到哪個狀態（§5.1） */
+export function pauseGame(state: GameState): void {
+  if (isPlayPhase(state.phase)) state.phase = { kind: 'paused', resumeTo: state.phase };
+}
+
+/** 「繼續」：回到暫停前的狀態，剩下的倒數時間照舊 */
+export function resumeGame(state: GameState): void {
+  if (state.phase.kind === 'paused') state.phase = state.phase.resumeTo;
+}
+
+/** 倒數的總長度；不是倒數模式時是 null */
+function countDownLimitMs(options: GameOptions): number | null {
+  return options.timerMode === 'countDown' ? options.countDownSeconds * 1000 : null;
+}
+
+/** 狀態列要顯示的時間（§5.2）：正計時是用時，倒數是剩下的時間（最小 0），不顯示時間時是 null */
+export function clockMs(state: GameState): number | null {
+  const { timerMode } = state.options;
+  switch (timerMode) {
+    case 'none':
+      return null;
+    case 'countUp':
+      return state.elapsedMs;
+    case 'countDown':
+      return Math.max(0, state.options.countDownSeconds * 1000 - state.elapsedMs);
+    default:
+      return assertNever(timerMode);
   }
 }
 
@@ -370,10 +422,22 @@ function respawn(state: GameState, level: Level): void {
 }
 
 /**
- * 命用完：目前這題與之後的題目都記為未作答（§10）。
+ * 累加遊戲時間（§5.2，只在 playing、wrongFeedback、lifeLost 呼叫），用時不會超過倒數的長度。
+ * 倒數歸零而且 canTimeUp 時結束遊戲、進入 timeUp，回傳 true。
+ */
+function tickClock(state: GameState, dtMs: number, canTimeUp = true): boolean {
+  const limitMs = countDownLimitMs(state.options);
+  state.elapsedMs = limitMs === null ? state.elapsedMs + dtMs : Math.min(limitMs, state.elapsedMs + dtMs);
+  if (limitMs === null || state.elapsedMs < limitMs || !canTimeUp) return false;
+  endGame(state, 'timeUp');
+  return true;
+}
+
+/**
+ * 命用完或時間到：目前這題與之後的題目都記為未作答（§10）。
  * 目前這題答錯過的選項照樣保留，結算回顧時看得到走進過哪些園區。
  */
-function endGame(state: GameState): void {
+function endGame(state: GameState, kind: 'gameOver' | 'timeUp'): void {
   const current = state.level;
   for (let levelIndex = state.levelIndex; levelIndex < state.order.length; levelIndex++) {
     const questionIndex = state.order[levelIndex];
@@ -382,7 +446,7 @@ function endGame(state: GameState): void {
     const wrongChoiceIds = levelIndex === state.levelIndex && current !== null ? [...current.wrongChoiceIds] : [];
     state.results.push({ questionId: question.id, status: 'unanswered', wrongChoiceIds });
   }
-  state.phase = { kind: 'gameOver' };
+  state.phase = { kind };
 }
 
 function stopPlayer(player: Player): void {

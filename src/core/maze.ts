@@ -347,7 +347,8 @@ function carvePerfectMaze(grid: Grid, zones: readonly ZoneShape[], rng: Rng): vo
   visited.add(grid.indexOf(first));
   grid.set(first, 'floor');
 
-  for (let current = stack.at(-1); current !== undefined; current = stack.at(-1)) {
+  // 不用 stack.at(-1)：Array.prototype.at 要 iPadOS 15.4 以上
+  for (let current = stack[stack.length - 1]; current !== undefined; current = stack[stack.length - 1]) {
     const here = current; // 讓 filter 的 callback 拿到確定不是 undefined 的值
     const options = DIRECTIONS.filter((d) => {
       const next = step(here, d, 2);

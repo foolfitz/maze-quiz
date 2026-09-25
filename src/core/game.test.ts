@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GAME_OPTIONS } from '../config';
 import {
+  clockMs,
   createGame,
   DEFAULT_GAME_CONFIG,
   debugCompleteLevel,
   debugLoseLife,
   debugToggleInvincible,
   isInvulnerable,
+  isPlayPhase,
   levelMaze,
+  pauseGame,
+  resumeGame,
   startGame,
   steer,
   stepGame,
@@ -531,5 +535,136 @@ describe('除錯快捷鍵（M5）', () => {
     debugToggleInvincible(state);
     hitByEnemy(state);
     expect(state.phase.kind).toBe('lifeLost');
+  });
+});
+
+// ─── M6 計時與暫停 ───────────────────────────────────────────
+
+describe('倒數（§5.2）', () => {
+  const countDown: GameOptions = { ...options, timerMode: 'countDown', countDownSeconds: 30 };
+
+  it('顯示剩下的時間；歸零時進入 timeUp，所有題目記為未作答', () => {
+    const state = startPlaying(1, NO_ENEMIES, countDown);
+    expect(clockMs(state)).toBe(30_000);
+    walkInto(state, zoneOf(state, 'q1-b'));
+    run(state, 10_000);
+    expect(state.phase.kind).toBe('playing');
+    expect(clockMs(state)).toBeLessThan(20_000);
+
+    runWhile(state, 'playing', 40_000);
+    expect(state.phase.kind).toBe('timeUp');
+    expect(clockMs(state)).toBe(0);
+    expect(state.elapsedMs).toBe(30_000);
+    expect(state.results).toEqual([
+      { questionId: 'q1', status: 'unanswered', wrongChoiceIds: ['q1-b'] },
+      { questionId: 'q2', status: 'unanswered', wrongChoiceIds: [] },
+    ]);
+    viewResults(state);
+    expect(state.phase.kind).toBe('results');
+  });
+
+  it('受傷動畫期間也會時間到', () => {
+    const state = startPlaying(1, NO_ENEMIES, countDown);
+    run(state, 29_900);
+    debugLoseLife(state);
+    expect(state.phase.kind).toBe('lifeLost');
+    run(state, 200);
+    expect(state.phase.kind).toBe('timeUp');
+  });
+
+  it('答錯回饋期間也會時間到', () => {
+    const state = startPlaying(1, NO_ENEMIES, countDown);
+    run(state, 29_300);
+    walkInto(state, zoneOf(state, 'q1-b'));
+    expect(state.phase.kind).toBe('wrongFeedback');
+    // 答錯回饋（0.6 秒）還沒播完就到 30 秒
+    expect(30_000 - state.elapsedMs).toBeLessThan(timing.wrongFeedbackMs);
+    runWhile(state, 'wrongFeedback');
+    expect(state.phase.kind).toBe('timeUp');
+    expect(state.elapsedMs).toBe(30_000);
+  });
+
+  it('最後一條命被撞之後才時間到：結果仍然是「沒有命了」', () => {
+    const state = startPlaying(1, NO_ENEMIES, { ...countDown, lives: 1 });
+    run(state, 29_500);
+    debugLoseLife(state);
+    expect(state.lives).toBe(0);
+    runWhile(state, 'lifeLost');
+    expect(state.phase.kind).toBe('gameOver');
+    expect(state.elapsedMs).toBe(30_000);
+  });
+
+  it('正計時與不顯示時間都不會時間到；不顯示時間時 clockMs 是 null，但照樣累計', () => {
+    const countUp = startPlaying(1, NO_ENEMIES, { ...options, timerMode: 'countUp', countDownSeconds: 30 });
+    run(countUp, 40_000);
+    expect(countUp.phase.kind).toBe('playing');
+    expect(clockMs(countUp)).toBeCloseTo(40_000, -2);
+
+    const hidden = startPlaying(1, NO_ENEMIES, { ...options, timerMode: 'none', countDownSeconds: 30 });
+    run(hidden, 40_000);
+    expect(hidden.phase.kind).toBe('playing');
+    expect(clockMs(hidden)).toBeNull();
+    expect(hidden.elapsedMs).toBeCloseTo(40_000, -2);
+  });
+});
+
+describe('暫停（§5.1）', () => {
+  it('暫停期間不計時、不動，繼續後回到原本的狀態', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    steer(state, 'left');
+    run(state, 500);
+    pauseGame(state);
+    expect(state.phase).toEqual({ kind: 'paused', resumeTo: { kind: 'playing' } });
+    expect(steer(state, 'up')).toBeNull();
+
+    const level = currentLevel(state);
+    const snapshot = JSON.stringify([state.elapsedMs, level.player, level.enemies]);
+    run(state, 5000);
+    expect(JSON.stringify([state.elapsedMs, level.player, level.enemies])).toBe(snapshot);
+
+    resumeGame(state);
+    expect(state.phase.kind).toBe('playing');
+    run(state, 100);
+    expect(state.elapsedMs).toBeGreaterThan(500);
+  });
+
+  it('預備期間暫停：繼續後剩下的預備時間照舊', () => {
+    const state = createGame(quiz, options, 1, NO_ENEMIES);
+    startGame(state);
+    run(state, 1000);
+    pauseGame(state);
+    run(state, 5000);
+    resumeGame(state);
+    expect(state.phase).toMatchObject({ kind: 'levelIntro' });
+    const remaining = state.phase.kind === 'levelIntro' ? state.phase.remainingMs : NaN;
+    expect(remaining).toBeCloseTo(timing.levelIntroMs - 1000, 0);
+    expect(state.elapsedMs).toBe(0);
+    run(state, timing.levelIntroMs - 1000 + STEP_MS);
+    expect(state.phase.kind).toBe('playing');
+  });
+
+  it('只有 PlayPhase 可以暫停', () => {
+    const state = createGame(quiz, options, 1, NO_ENEMIES);
+    pauseGame(state);
+    expect(state.phase.kind).toBe('title');
+    expect(isPlayPhase({ kind: 'results' })).toBe(false);
+    expect(isPlayPhase({ kind: 'wrongFeedback', zoneId: 'x', remainingMs: 1 })).toBe(true);
+
+    // 結束之後不能暫停
+    const ended = startPlaying(1, NO_ENEMIES, { ...options, lives: 1 });
+    debugLoseLife(ended);
+    runWhile(ended, 'lifeLost');
+    expect(ended.phase.kind).toBe('gameOver');
+    pauseGame(ended);
+    expect(ended.phase.kind).toBe('gameOver');
+    viewResults(ended);
+    pauseGame(ended);
+    expect(ended.phase.kind).toBe('results');
+
+    // 暫停中再暫停一次不會疊兩層
+    startGame(state);
+    pauseGame(state);
+    pauseGame(state);
+    expect(state.phase).toMatchObject({ kind: 'paused', resumeTo: { kind: 'levelIntro' } });
   });
 });

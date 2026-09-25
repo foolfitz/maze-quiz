@@ -12,7 +12,14 @@
       <div id="game" class="game" hidden>
         <header class="status-bar">
           <span id="question-number"></span>
-          <span id="lives" class="lives" role="img"></span>
+          <div class="status-right">
+            <span id="lives" class="lives" role="img"></span>
+            <span id="clock" class="clock" role="timer" hidden></span>
+            <!-- aria-label 由 main.ts 從 ui/strings.ts 設定 -->
+            <button id="pause-button" class="icon-btn" type="button">
+              <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="1.5" width="2.2" height="7" rx="0.5" /><rect x="5.8" y="1.5" width="2.2" height="7" rx="0.5" /></svg>
+            </button>
+          </div>
         </header>
         <div id="stage" class="stage">
           <canvas id="maze-canvas"></canvas>

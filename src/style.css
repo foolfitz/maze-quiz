@@ -46,9 +46,14 @@ body {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
   padding: 16px;
   overflow-y: auto;
+}
+
+/* 用 margin: auto 置中而不用 place-items: center：內容比畫面高時（逐題回顧、圖片來源）
+   會自動貼齊上緣，開頭不會被切掉、捲不到 */
+.overlay > * {
+  margin: auto;
 }
 
 .overlay[hidden] {
@@ -60,10 +65,222 @@ body {
   background: rgb(234 217 166 / 0.85);
 }
 
-/* 圖片來源；.card 的規則寫在後面，所以這裡要用兩個 class 提高優先順序 */
-.card.card-credits {
+/* 圖片來源、排行榜、結算；.card 的規則寫在後面，所以這裡要用兩個 class 提高優先順序 */
+.card.card-credits,
+.card.card-wide {
   width: min(100%, 44rem);
+}
+
+.card.card-credits {
   text-align: left;
+}
+
+/* ─── 排行榜（§11.2）─────────────────────────────── */
+
+.leaderboard {
+  width: 100%;
+  margin: 1rem 0 0;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard th,
+.leaderboard td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgb(31 42 36 / 0.12);
+  text-align: center;
+}
+
+.leaderboard thead th {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.leaderboard tbody th {
+  font-weight: 400;
+}
+
+.leaderboard .leaderboard-name {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.leaderboard-new td,
+.leaderboard-new th {
+  background: #fff4c2;
+  font-weight: 700;
+}
+
+/* ─── 結算（§11.1）───────────────────────────────── */
+
+.ranking {
+  margin-top: 1.25rem;
+}
+
+.name-form p {
+  margin: 0.4rem 0;
+}
+
+.name-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.name-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 16 px 以上：iPad 的 Safari 才不會在點輸入框時自動放大畫面 */
+.name-input {
+  width: 12em;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 2px solid var(--hedge);
+  border-radius: 8px;
+  font: inherit;
+  font-size: max(1rem, 16px);
+}
+
+.name-input:focus-visible {
+  outline: 3px solid var(--keeper);
+  outline-offset: 2px;
+}
+
+.name-row .btn {
+  width: auto;
+}
+
+.form-message {
+  min-height: 1.5em;
+  color: var(--wrong);
+}
+
+.ranking-saved {
+  font-weight: 700;
+  color: #1e7a3c; /* 比 --correct 深一點，白底上的對比才夠 4.5:1 */
+}
+
+/* 看不到但螢幕閱讀器唸得到 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.review-number {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.review {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.review h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.review-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-item {
+  padding: 12px 0;
+  border-top: 1px solid rgb(31 42 36 / 0.12);
+}
+
+.review-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.review-symbol {
+  display: grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--muted);
+}
+
+.review-firstTry .review-symbol {
+  background: var(--correct);
+}
+
+.review-retry .review-symbol {
+  background: #b7791f;
+}
+
+.review-question {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-prompt {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.review-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.review-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 2px solid var(--correct);
+  border-radius: 999px;
+}
+
+.review-choices-wrong .choice-chip {
+  border-color: var(--wrong);
+}
+
+.chip-mark {
+  font-weight: 700;
+  color: var(--correct);
+}
+
+.review-choices-wrong .chip-mark {
+  color: var(--wrong);
+}
+
+.review-thumb {
+  width: 48px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #f4f1e8;
 }
 
 .credit-list {
@@ -173,12 +390,6 @@ progress {
   margin-top: 1.5rem;
 }
 
-.notice {
-  min-height: 1.5em;
-  margin: 1rem 0 0;
-  color: var(--muted);
-}
-
 /* 按鈕：觸控範圍至少 44×44 px（§7.4） */
 .btn {
   min-width: 44px;
@@ -231,6 +442,54 @@ progress {
   min-height: 52px;
   padding: 8px 16px;
   font-size: 1.1rem;
+}
+
+/* 狀態列右側：生命、時間、暫停鍵（§12.1） */
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.clock {
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.clock[hidden] {
+  display: none;
+}
+
+/* 只有圖示的按鈕，觸控範圍 44×44 px（§7.4） */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--hedge);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--hedge);
+  cursor: pointer;
+}
+
+.icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-btn:focus-visible {
+  outline: 3px solid var(--keeper);
+  outline-offset: 3px;
 }
 
 /* 生命（§12.1）：實心 ♥ 是剩下的命，空心 ♡ 是用掉的 */

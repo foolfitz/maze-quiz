@@ -66,8 +66,6 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
       ],
     }),
     dpadSetting(handlers.dpadSide, handlers.onDpadSideChange),
-    // 暫時的提示訊息放這裡，螢幕閱讀器會唸出變化
-    el('p', { className: 'notice', attrs: { id: 'title-notice', 'aria-live': 'polite' } }),
   ]);
   startButton.focus();
 }
@@ -88,30 +86,29 @@ function dpadSetting(current: DpadSide, onChange: (side: DpadSide) => void): HTM
   });
 }
 
-/** 在標題畫面下方顯示一行提示 */
-export function showTitleNotice(root: HTMLElement, message: string): void {
-  const notice = root.querySelector('#title-notice');
-  if (notice !== null) notice.textContent = message;
-}
-
-/** 沒有命了（§5.1）：疊在遊戲畫面上，按「看成績」進入結算 */
-export function showGameOver(root: HTMLElement, onViewResults: () => void): void {
+/** 沒有命了、時間到（§5.1）：疊在遊戲畫面上，按「看成績」進入結算 */
+export function showGameEnd(root: HTMLElement, kind: 'gameOver' | 'timeUp', onViewResults: () => void): void {
   const view = button(STRINGS.viewResults, onViewResults, 'primary');
-  showCard(root, [el('h1', { text: STRINGS.gameOver }), el('div', { className: 'actions', children: [view] })]);
+  const title = kind === 'gameOver' ? STRINGS.gameOver : STRINGS.timeUp;
+  showCard(root, [el('h1', { text: title }), el('div', { className: 'actions', children: [view] })]);
   root.classList.add('backdrop');
   view.focus();
 }
 
-/** 簡易結算（M3）：一次答對的題數與「再玩一次」。逐題回顧在 M6。 */
-export function showResults(root: HTMLElement, score: number, total: number, onPlayAgain: () => void): void {
-  const again = button(STRINGS.playAgain, onPlayAgain, 'primary');
+export interface PausedHandlers {
+  readonly onResume: () => void;
+  readonly onRestart: () => void;
+}
+
+/** 暫停（§5.1）：半透明覆蓋層，「繼續」「重新開始」 */
+export function showPaused(root: HTMLElement, handlers: PausedHandlers): void {
+  const resume = button(STRINGS.resume, handlers.onResume, 'primary');
   showCard(root, [
-    el('h1', { text: STRINGS.resultsTitle }),
-    el('p', { className: 'score', text: STRINGS.firstTryScore(score, total) }),
-    el('div', { className: 'actions', children: [again] }),
+    el('h1', { text: STRINGS.pausedTitle }),
+    el('div', { className: 'actions', children: [resume, button(STRINGS.restart, handlers.onRestart)] }),
   ]);
   root.classList.add('backdrop');
-  again.focus();
+  resume.focus();
 }
 
 /**

@@ -15,3 +15,14 @@ export function showLives(root: HTMLElement, lives: number, maxLives: number): v
   root.replaceChildren(...hearts);
   root.setAttribute('aria-label', STRINGS.lives(lives));
 }
+
+/**
+ * 狀態列的時間（§5.2）；text 是 null 時（不計時模式）隱藏。內容沒變就不動 DOM。
+ * label 給螢幕閱讀器，例如「剩下 1:23」，只唸數字聽不出是用了多久還是剩多久。
+ */
+export function showClock(element: HTMLElement, text: string | null, label: string): void {
+  element.hidden = text === null;
+  if (text === null || element.textContent === text) return;
+  element.textContent = text;
+  element.setAttribute('aria-label', label);
+}
