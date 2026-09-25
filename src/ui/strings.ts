@@ -36,6 +36,9 @@ export const STRINGS = {
   // 除錯覆蓋層（§12.6）
   debug: {
     title: '除錯資訊',
+    fps: (fps: string) => `FPS ${fps}`,
+    player: (x: string, y: string, dir: string, pending: string) =>
+      `玩家 (${x}, ${y})　方向 ${dir}　等待轉向 ${pending}`,
     seed: (seed: number) => `種子 ${seed}（網址加上 ?seed=${seed} 可重現）`,
     level: (levelNumber: number, levelSeed: number, attempt: number) =>
       `第 ${levelNumber} 關：levelSeed ${levelSeed}，第 ${attempt + 1} 次嘗試`,

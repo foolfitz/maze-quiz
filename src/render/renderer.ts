@@ -1,5 +1,6 @@
-import type { DistanceField, Tile } from '../core/grid';
+import { DIRECTION_VECTORS, type DistanceField, type Rect, type Tile } from '../core/grid';
 import type { Maze } from '../core/maze';
+import type { Direction } from '../core/types';
 import type { Theme } from './theme';
 
 /** 答案區裡要顯示的內容，順序與 maze.zones 相同 */
@@ -13,32 +14,68 @@ export interface DebugLayer {
   readonly correct: readonly boolean[]; // 各園區的選項是否正確，順序與 maze.zones 相同
 }
 
-export interface Scene {
-  readonly maze: Maze;
-  readonly labels: readonly ZoneLabel[];
-  readonly debug: DebugLayer | null;
-}
-
 /** 浮點數格座標，整數值是格子中心（§6.1） */
 export interface TilePoint {
   readonly x: number;
   readonly y: number;
 }
 
+export interface PlayerView extends TilePoint {
+  readonly dir: Direction | null;
+  readonly pendingDir: Direction | null;
+}
+
+export interface Scene {
+  readonly maze: Maze;
+  readonly labels: readonly ZoneLabel[];
+  readonly debug: DebugLayer | null;
+  readonly player: PlayerView;
+}
+
 /** 選項文字的最小字級（CSS px，§8） */
 const MIN_LABEL_FONT_PX = 12;
+/** 碰壁抖動的長度 */
+const BUMP_MS = 180;
+
+/** 各方向的角度（弧度），畫箭頭時用來旋轉 */
+const DIRECTION_ANGLES: Readonly<Record<Direction, number>> = {
+  right: 0,
+  down: Math.PI / 2,
+  left: Math.PI,
+  up: -Math.PI / 2,
+};
+
+/** 靜態圖層是依哪些資料畫出來的；任何一項變了就重畫 */
+interface StaticLayerKey {
+  readonly maze: Maze;
+  readonly labels: readonly ZoneLabel[];
+  readonly debug: DebugLayer | null;
+  readonly tileSize: number;
+  readonly dpr: number;
+}
 
 export class Renderer {
+  /** prefers-reduced-motion 時關閉碰壁抖動（§12.5） */
+  reducedMotion = false;
+
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly theme: Theme;
   private tileSize = 0; // CSS px
+  private dpr = 1;
+
+  // 牆、答案區與除錯資訊在一關之內不會變，先畫到另一張 canvas，每幀直接貼上
+  private readonly staticLayer: HTMLCanvasElement;
+  private readonly staticCtx: CanvasRenderingContext2D;
+  private staticKey: StaticLayerKey | null = null;
+
+  private bumpState: { readonly direction: Direction; readonly startMs: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, theme: Theme) {
-    const ctx = canvas.getContext('2d');
-    if (ctx === null) throw new Error('瀏覽器不支援 Canvas 2D');
     this.canvas = canvas;
-    this.ctx = ctx;
+    this.ctx = get2dContext(canvas);
+    this.staticLayer = document.createElement('canvas');
+    this.staticCtx = get2dContext(this.staticLayer);
     this.theme = theme;
   }
 
@@ -52,12 +89,18 @@ export class Renderer {
     const cssWidth = tileSize * gridWidth;
     const cssHeight = tileSize * gridHeight;
     this.tileSize = tileSize;
+    this.dpr = dpr;
     this.canvas.style.width = `${cssWidth}px`;
     this.canvas.style.height = `${cssHeight}px`;
-    this.canvas.width = Math.round(cssWidth * dpr);
-    this.canvas.height = Math.round(cssHeight * dpr);
-    // 之後都用 CSS px 畫，由 transform 換算成實際像素
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const resize = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void => {
+      canvas.width = Math.round(cssWidth * dpr);
+      canvas.height = Math.round(cssHeight * dpr);
+      // 之後都用 CSS px 畫，由 transform 換算成實際像素
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize(this.canvas, this.ctx);
+    resize(this.staticLayer, this.staticCtx);
+    this.staticKey = null;
   }
 
   /** 螢幕座標（例如 PointerEvent 的 clientX/Y）→ 浮點數格座標 */
@@ -67,34 +110,62 @@ export class Renderer {
     return { x: (clientX - rect.left) / size - 0.5, y: (clientY - rect.top) / size - 0.5 };
   }
 
-  draw(scene: Scene): void {
+  /** 碰壁回饋：角色往牆的方向輕微抖動 */
+  bump(direction: Direction, nowMs: number): void {
+    if (!this.reducedMotion) this.bumpState = { direction, startMs: nowMs };
+  }
+
+  draw(scene: Scene, nowMs: number): void {
     if (this.tileSize === 0) return;
-    const { ctx, theme } = this;
+    this.ensureStaticLayer(scene);
+    const { ctx } = this;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.staticLayer, 0, 0);
+    ctx.restore();
+    this.drawPlayer(scene.player, nowMs);
+  }
+
+  // ─── 靜態圖層 ───────────────────────────────────────────────
+
+  private ensureStaticLayer(scene: Scene): void {
+    const key: StaticLayerKey = {
+      maze: scene.maze,
+      labels: scene.labels,
+      debug: scene.debug,
+      tileSize: this.tileSize,
+      dpr: this.dpr,
+    };
+    const old = this.staticKey;
+    if (
+      old !== null &&
+      old.maze === key.maze &&
+      old.labels === key.labels &&
+      old.debug === key.debug &&
+      old.tileSize === key.tileSize &&
+      old.dpr === key.dpr
+    ) {
+      return;
+    }
+    this.staticKey = key;
+
+    const ctx = this.staticCtx;
+    const { theme, tileSize: s } = this;
     const { grid } = scene.maze;
 
     ctx.fillStyle = theme.path;
-    ctx.fillRect(0, 0, grid.width * this.tileSize, grid.height * this.tileSize);
+    ctx.fillRect(0, 0, grid.width * s, grid.height * s);
 
     ctx.fillStyle = theme.hedge;
     for (const tile of grid.allTiles()) {
-      if (!grid.isFloor(tile)) this.fillTile(tile);
+      if (!grid.isFloor(tile)) ctx.fillRect(tile.x * s, tile.y * s, s, s);
     }
 
     scene.maze.zones.forEach((zone, i) => {
-      const label = scene.labels[i];
-      this.drawZoneCard(zone.rect, label?.text ?? '');
+      this.drawZoneCard(ctx, zone.rect, scene.labels[i]?.text ?? '');
     });
 
-    this.drawKeeper(scene.maze.start);
-
-    if (scene.debug !== null) this.drawDebug(scene.maze, scene.debug);
-  }
-
-  // ─── 各部分的畫法 ───────────────────────────────────────────
-
-  private fillTile(tile: Tile): void {
-    const s = this.tileSize;
-    this.ctx.fillRect(tile.x * s, tile.y * s, s, s);
+    if (scene.debug !== null) this.drawDebug(ctx, scene.maze, scene.debug);
   }
 
   /** 格子中心的 CSS px 座標 */
@@ -102,8 +173,8 @@ export class Renderer {
     return { x: (tile.x + 0.5) * this.tileSize, y: (tile.y + 0.5) * this.tileSize };
   }
 
-  private drawZoneCard(rect: { x: number; y: number; width: number; height: number }, text: string): void {
-    const { ctx, theme } = this;
+  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, text: string): void {
+    const { theme } = this;
     const s = this.tileSize;
     const pad = s * 0.12;
     const x = rect.x * s + pad;
@@ -111,8 +182,7 @@ export class Renderer {
     const w = rect.width * s - pad * 2;
     const h = rect.height * s - pad * 2;
 
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, s * 0.25);
+    roundedRectPath(ctx, x, y, w, h, s * 0.25);
     ctx.fillStyle = theme.card;
     ctx.fill();
     ctx.lineWidth = Math.max(1, s * 0.05);
@@ -120,7 +190,7 @@ export class Renderer {
     ctx.stroke();
 
     // 沒有圖片時只顯示文字，字級放大；放不下就縮小，最小 12 px
-    const fitted = this.fitText(text, w - pad * 2, s * 0.8, 'bold');
+    const fitted = this.fitText(ctx, text, w - pad * 2, s * 0.8, 'bold');
     ctx.fillStyle = theme.ink;
     ctx.font = fitted.font;
     ctx.textAlign = 'center';
@@ -129,8 +199,13 @@ export class Renderer {
   }
 
   /** 單行文字：先用最大字級，太寬就依比例縮小；縮到最小字級還放不下就截斷加「…」 */
-  private fitText(text: string, maxWidth: number, maxSize: number, weight: string): { text: string; font: string } {
-    const { ctx } = this;
+  private fitText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    maxSize: number,
+    weight: string,
+  ): { text: string; font: string } {
     const fontAt = (size: number): string => `${weight} ${size}px ${this.theme.quizFont}`;
     const widthAt = (value: string, size: number): number => {
       ctx.font = fontAt(size);
@@ -142,27 +217,14 @@ export class Renderer {
     const scaled = Math.floor((maxSize * maxWidth) / fullWidth);
     if (scaled >= MIN_LABEL_FONT_PX) return { text, font: fontAt(scaled) };
 
-    let shortened = text;
-    while (shortened.length > 1 && widthAt(`${shortened}…`, MIN_LABEL_FONT_PX) > maxWidth) {
-      shortened = shortened.slice(0, -1);
-    }
-    return { text: `${shortened}…`, font: fontAt(MIN_LABEL_FONT_PX) };
+    // 以 code point 為單位刪字，才不會把 emoji 之類的字元切成一半
+    const chars = [...text];
+    while (chars.length > 1 && widthAt(`${chars.join('')}…`, MIN_LABEL_FONT_PX) > maxWidth) chars.pop();
+    return { text: `${chars.join('')}…`, font: fontAt(MIN_LABEL_FONT_PX) };
   }
 
-  private drawKeeper(position: TilePoint): void {
-    const { ctx, theme } = this;
-    const { x, y } = this.center(position);
-    ctx.beginPath();
-    ctx.arc(x, y, this.tileSize * 0.36, 0, Math.PI * 2);
-    ctx.fillStyle = theme.keeper;
-    ctx.fill();
-    ctx.lineWidth = Math.max(1, this.tileSize * 0.06);
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.stroke();
-  }
-
-  private drawDebug(maze: Maze, debug: DebugLayer): void {
-    const { ctx, theme } = this;
+  private drawDebug(ctx: CanvasRenderingContext2D, maze: Maze, debug: DebugLayer): void {
+    const { theme } = this;
     const s = this.tileSize;
     const { grid } = maze;
 
@@ -209,13 +271,117 @@ export class Renderer {
     });
 
     // 敵人出生點
-    maze.enemySpawns.forEach((spawn, i) => {
+    ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
+    maze.enemySpawns.forEach((spawn: Tile, i) => {
       const { x, y } = this.center(spawn);
+      const color = theme.enemies[i % theme.enemies.length] ?? theme.wrong;
       ctx.lineWidth = 2;
-      ctx.strokeStyle = theme.enemies[i % theme.enemies.length] ?? theme.wrong;
+      ctx.strokeStyle = color;
       ctx.strokeRect(x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6);
-      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fillStyle = color;
       ctx.fillText(`E${i + 1}`, x, y);
     });
   }
+
+  // ─── 動態部分 ───────────────────────────────────────────────
+
+  private drawPlayer(player: PlayerView, nowMs: number): void {
+    const { ctx, theme } = this;
+    const s = this.tileSize;
+    let { x, y } = this.center(player);
+
+    if (this.bumpState !== null) {
+      const t = (nowMs - this.bumpState.startMs) / BUMP_MS;
+      if (t < 0 || t >= 1) {
+        this.bumpState = null;
+      } else {
+        // 往牆的方向來回抖兩下，幅度逐漸變小
+        const v = DIRECTION_VECTORS[this.bumpState.direction];
+        const offset = Math.sin(t * Math.PI * 4) * (1 - t) * s * 0.12;
+        x += v.x * offset;
+        y += v.y * offset;
+      }
+    }
+
+    const r = s * 0.36;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = theme.keeper;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s * 0.06);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+
+    // 目前方向：角色身上的小箭頭
+    if (player.dir !== null) {
+      this.withRotation(x, y, DIRECTION_ANGLES[player.dir], () => {
+        ctx.beginPath();
+        ctx.moveTo(r * 0.62, 0);
+        ctx.lineTo(-r * 0.28, -r * 0.46);
+        ctx.lineTo(-r * 0.28, r * 0.46);
+        ctx.closePath();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+      });
+    }
+
+    // 等待轉向：角色外面的虛線箭頭
+    if (player.pendingDir !== null) {
+      this.withRotation(x, y, DIRECTION_ANGLES[player.pendingDir], () => {
+        ctx.strokeStyle = theme.keeper;
+        ctx.fillStyle = theme.keeper;
+        ctx.lineWidth = Math.max(1.5, s * 0.08);
+        ctx.setLineDash([s * 0.1, s * 0.08]);
+        ctx.beginPath();
+        ctx.moveTo(r * 1.2, 0);
+        ctx.lineTo(r * 2.0, 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(r * 2.5, 0);
+        ctx.lineTo(r * 1.95, -r * 0.4);
+        ctx.lineTo(r * 1.95, r * 0.4);
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+  }
+
+  /** 以 (x, y) 為原點、旋轉 angle 之後畫圖，畫完還原 */
+  private withRotation(x: number, y: number, angle: number, draw: () => void): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    draw();
+    ctx.restore();
+  }
+}
+
+/**
+ * 圓角矩形的路徑。不用 ctx.roundRect()：它要 Safari 16 以上，
+ * 學校裡停在 iPadOS 15 的舊 iPad 會直接出錯、畫面全白。
+ */
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) throw new Error('瀏覽器不支援 Canvas 2D');
+  return ctx;
 }

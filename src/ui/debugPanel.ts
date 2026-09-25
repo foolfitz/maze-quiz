@@ -24,6 +24,8 @@ export function renderDebugPanel(root: HTMLElement, info: DebugPanelInfo): void 
   const ratio = known.length > 0 ? (Math.max(...known) / Math.min(...known)).toFixed(2) : '—';
 
   const children: Node[] = [
+    el('p', { className: 'debug-fps', text: T.fps('—') }),
+    el('p', { className: 'debug-player' }),
     el('p', { text: T.seed(info.baseSeed) }),
     el('p', { text: T.level(info.levelIndex + 1, result.seed, result.attempt) }),
     el('p', { text: `${T.distances}${distances}（${T.ratio(ratio)}）` }),
@@ -55,6 +57,18 @@ export function renderDebugPanel(root: HTMLElement, info: DebugPanelInfo): void 
 
   root.replaceChildren(panel);
   root.hidden = false;
+}
+
+/** 更新幀率；遊戲迴圈每半秒算一次 */
+export function updateDebugFps(root: HTMLElement, fps: number): void {
+  const line = root.querySelector('.debug-fps');
+  if (line !== null) line.textContent = T.fps(fps.toFixed(0));
+}
+
+/** 更新玩家狀態那一行；內容沒變就不動 DOM */
+export function updateDebugPlayer(root: HTMLElement, text: string): void {
+  const line = root.querySelector('.debug-player');
+  if (line !== null && line.textContent !== text) line.textContent = text;
 }
 
 function describeViolation(violation: MazeViolation, zoneLabels: readonly string[]): string {

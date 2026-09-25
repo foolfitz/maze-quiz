@@ -1,12 +1,19 @@
 import './style.css';
-import { bfs } from './core/grid';
-import { DEFAULT_MAZE_CONFIG, generateLevelMaze, isCorridor, isZoneCount } from './core/maze';
+import { CONFIG } from './config';
+import { bfs, type Passable } from './core/grid';
+import { DEFAULT_MAZE_CONFIG, generateLevelMaze, isCorridor, isZoneCount, type Maze } from './core/maze';
+import { createPlayer, requestDirection, updatePlayer, type Player } from './core/player';
 import { seedFromText } from './core/rng';
+import type { Direction } from './core/types';
+import { attachKeyboard } from './input/keyboard';
+import { attachPointer } from './input/pointer';
 import { loadQuiz, type LoadedQuiz } from './loader';
-import { Renderer, type Scene } from './render/renderer';
+import { startLoop } from './loop';
+import { Renderer, type DebugLayer, type ZoneLabel } from './render/renderer';
 import { ZOO_THEME } from './render/theme';
-import { renderDebugPanel } from './ui/debugPanel';
+import { renderDebugPanel, updateDebugFps, updateDebugPlayer } from './ui/debugPanel';
 import { requireElement } from './ui/dom';
+import { showRipple } from './ui/ripple';
 import { showError, showLoading, showTitle, showTitleNotice } from './ui/screens';
 import { STRINGS } from './ui/strings';
 import { parseUrlParams, quizJsonPath, type UrlParams } from './urlParams';
@@ -52,9 +59,16 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 0x1_0000_0000);
 }
 
+/** 一關的靜態資料：迷宮與答案區顯示的內容 */
+interface Level {
+  readonly maze: Maze;
+  readonly labels: readonly ZoneLabel[];
+  readonly debug: DebugLayer | null;
+}
+
 /**
- * M1：畫出每一關的靜態迷宮與答案區。
- * 除錯模式下按 N 換到下一關。遊戲狀態機在 M3 移到 core/game.ts。
+ * M2：在迷宮裡操作玩家移動（鍵盤、滑鼠、觸控）。
+ * 除錯模式下按 N 換到下一關。答案判定與關卡流程在 M3 移到 core/game.ts。
  */
 function startGame(data: LoadedQuiz, params: UrlParams): void {
   const { quiz } = data;
@@ -67,12 +81,20 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
   const seed = params.seed === null ? randomSeed() : seedFromText(params.seed);
   const config = DEFAULT_MAZE_CONFIG;
   const renderer = new Renderer(canvas, ZOO_THEME);
-  let scene: Scene | null = null;
-  let levelIndex = 0;
 
-  const redraw = (): void => {
-    if (scene !== null) renderer.draw(scene);
-  };
+  // prefers-reduced-motion：關閉碰壁抖動（漣漪由 CSS 關閉）
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  renderer.reducedMotion = reducedMotion.matches;
+  reducedMotion.addEventListener('change', () => {
+    renderer.reducedMotion = reducedMotion.matches;
+  });
+
+  let levelIndex = 0;
+  let level: Level | null = null;
+  let player: Player | null = null;
+
+  // M2 還沒有答案判定，玩家可以走進園區；M3 會加上判定與封門
+  const passable: Passable = (tile) => level?.maze.grid.isFloor(tile) ?? false;
 
   const showLevel = (index: number): void => {
     const question = quiz.questions[index];
@@ -87,14 +109,14 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
     const choices = maze.zones.map((zone) => question.choices[zone.choiceIndex]);
     const distances = params.debug ? bfs(maze.grid, maze.start, (tile) => isCorridor(maze, tile)) : null;
 
-    scene = {
+    level = {
       maze,
       labels: choices.map((choice) => ({ text: choice?.text ?? '' })),
       debug:
         distances === null ? null : { distances, correct: choices.map((choice) => choice?.correct ?? false) },
     };
+    player = createPlayer(maze.start);
     questionNumber.textContent = STRINGS.questionNumber(index + 1, quiz.questions.length);
-    redraw();
 
     if (distances !== null) {
       renderDebugPanel(debugRoot, {
@@ -110,21 +132,80 @@ function startGame(data: LoadedQuiz, params: UrlParams): void {
     }
   };
 
-  // 視窗大小或方向改變時重新計算格子大小（§12.2）
-  new ResizeObserver((entries) => {
-    const box = entries[0]?.contentRect;
-    if (box === undefined) return;
-    renderer.layout(box.width, box.height, config.width, config.height);
-    redraw();
-  }).observe(stage);
+  const steer = (direction: Direction): void => {
+    if (player === null) return;
+    if (requestDirection(player, direction, passable) === 'bumped') {
+      renderer.bump(direction, performance.now());
+    }
+  };
+
+  // ─── 版面：視窗大小、方向或 devicePixelRatio 改變時重新計算（§12.2）───
+
+  const relayout = (): void => {
+    const style = getComputedStyle(stage);
+    const width = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const height = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    renderer.layout(width, height, config.width, config.height);
+  };
+  new ResizeObserver(relayout).observe(stage);
+
+  // 把視窗拖到解析度不同的螢幕時，CSS 尺寸不變但 devicePixelRatio 會變
+  const watchPixelRatio = (): void => {
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    query.addEventListener(
+      'change',
+      () => {
+        relayout();
+        watchPixelRatio();
+      },
+      { once: true },
+    );
+  };
+  watchPixelRatio();
+
+  // ─── 輸入 ───────────────────────────────────────────────────
+
+  attachKeyboard(window, { onDirection: steer });
+  attachPointer(
+    stage,
+    {
+      screenToTile: (x, y) => renderer.screenToTile(x, y),
+      playerPosition: () => player,
+      deadZoneTiles: CONFIG.player.pointerDeadZoneTiles,
+    },
+    { onDirection: steer, onPress: (x, y) => showRipple(stage, x, y) },
+  );
 
   if (params.debug) {
     window.addEventListener('keydown', (event) => {
-      if (event.key === 'n' || event.key === 'N') {
-        showLevel((levelIndex + 1) % quiz.questions.length);
-      }
+      if (event.code === 'KeyN' && !event.repeat) showLevel((levelIndex + 1) % quiz.questions.length);
     });
   }
+
+  // ─── 遊戲迴圈（§5.3）───────────────────────────────────────
+
+  let shownFps = -1;
+  const loop = startLoop(
+    {
+      update: (dtMs) => {
+        if (player !== null) updatePlayer(player, dtMs, passable);
+      },
+      render: (nowMs) => {
+        if (level === null || player === null) return;
+        renderer.draw({ ...level, player }, nowMs);
+        if (params.debug) {
+          if (loop.fps() !== shownFps) {
+            shownFps = loop.fps();
+            updateDebugFps(debugRoot, shownFps);
+          }
+          const { x, y, dir, pendingDir } = player;
+          updateDebugPlayer(debugRoot, STRINGS.debug.player(x.toFixed(2), y.toFixed(2), dir ?? '—', pendingDir ?? '—'));
+        }
+      },
+    },
+    CONFIG.loop.stepHz,
+    CONFIG.loop.maxFrameMs,
+  );
 
   gameRoot.hidden = false;
   showLevel(0);

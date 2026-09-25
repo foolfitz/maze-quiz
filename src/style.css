@@ -166,22 +166,48 @@ progress {
   font-size: 1.1rem;
 }
 
+/* 整個舞台都接受觸控，不只迷宮本身；平板上不捲動、不縮放、不跳出長按選單、不選取文字（§7.4） */
 .stage {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 0;
   padding: 0 16px 16px;
   overflow: hidden;
-}
-
-/* 平板：不捲動、不縮放、不跳出長按選單、不選取文字（§7.4） */
-#maze-canvas {
-  display: block;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
+
+#maze-canvas {
+  display: block;
+}
+
+/* 觸控漣漪 */
+.ripple {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border: 3px solid var(--keeper);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: ripple 450ms ease-out forwards; /* 長度要和 ui/ripple.ts 的 RIPPLE_MS 一致 */
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(0.3);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
 
 /* ─── 除錯覆蓋層（§12.6）───────────────────────────────── */
 
