@@ -1,6 +1,9 @@
 import type { EnemyKind } from '../core/enemies';
 
-/** 視覺主題（§12.3）。顏色與 style.css 的 CSS 變數保持一致。 */
+/**
+ * 視覺主題（§12.3）：canvas 上用到的顏色與字型都集中在這裡。
+ * DOM 部分的顏色是 style.css 的 CSS 變數；兩邊共用的 token 由 theme.test.ts 檢查是否一致。
+ */
 export interface Theme {
   readonly hedge: string; // 牆（樹籬）
   readonly path: string; // 走廊（步道）
@@ -11,8 +14,16 @@ export interface Theme {
   readonly enemies: Readonly<Record<EnemyKind, string>>; // 各種敵人的顏色（外形在 renderer.ts）
   readonly card: string; // 答案區卡片底色
   readonly cardEdge: string; // 卡片邊框
-  readonly quizFont: string; // 題目與選項文字的字型
+  readonly outline: string; // 角色與 ✓ ✗ 的白邊、符號本身、敵人的眼白、柵門的橫條
+  readonly sealedShade: string; // 答錯封住的園區蓋上的暗色
+  /** 題目與選項文字的字型名稱（§12.4）；字型檔在 public/fonts/，@font-face 寫在 style.css */
+  readonly quizFontFamily: string;
+  /** canvas 用的完整字型清單：quizFontFamily 加上後備字型（中文字會用後備字型） */
+  readonly quizFont: string;
 }
+
+/** 介面中文的字型（§12.4）；和 style.css 的 --font-ui 相同 */
+const UI_FONT_STACK = '"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif';
 
 export const ZOO_THEME: Theme = {
   hedge: '#2F5E3B',
@@ -24,5 +35,8 @@ export const ZOO_THEME: Theme = {
   enemies: { chaser: '#E03131', wanderer: '#9C36B5', ambusher: '#E8590C' },
   card: '#FFFFFF',
   cardEdge: '#C9B98A',
-  quizFont: 'Andika, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif',
+  outline: '#FFFFFF',
+  sealedShade: 'rgba(31, 42, 36, 0.45)',
+  quizFontFamily: 'Andika',
+  quizFont: `Andika, ${UI_FONT_STACK}`,
 };

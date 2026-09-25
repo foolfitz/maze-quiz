@@ -96,6 +96,9 @@ export const STRINGS = {
     `quiz.json 不是正確的 JSON 格式：${reason}。常見原因是多了或少了逗號、引號或括號。`,
   imageLoadFailed: (key: string, url: string) =>
     `images.${key}：圖片載入失敗（${url}），用到這張圖的地方會改用純文字顯示`,
+  fontLoadFailed: (family: string, weight: number) =>
+    `字型 ${family}（字重 ${weight}）載入失敗，題目與選項文字改用系統字型。` +
+    `請確認字型檔還在（原始碼在 public/fonts/，建置結果在 fonts/）。`,
 
   // 除錯覆蓋層（§12.6）
   debug: {

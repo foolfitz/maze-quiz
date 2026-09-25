@@ -64,6 +64,12 @@ const BUMP_MS = 180;
 const FLASH_MS = 100;
 /** reduced motion 時，無敵期間改用固定的半透明（§12.5） */
 const INVULNERABLE_ALPHA = 0.45;
+/** 走進園區時的大 ✓ ✗ 從小彈到原本大小的時間；reduced motion 時直接顯示 */
+const MARK_POP_MS = 220;
+/** ✓ ✗ 彈出時一開始的大小（相對於原本大小） */
+const MARK_POP_FROM = 0.4;
+/** 樹籬凸出去的角的圓角半徑（格） */
+const HEDGE_CORNER_RATIO = 0.3;
 
 /** 各方向的角度（弧度），畫箭頭時用來旋轉 */
 const DIRECTION_ANGLES: Readonly<Record<Direction, number>> = {
@@ -99,6 +105,8 @@ export class Renderer {
   private staticKey: StaticLayerKey | null = null;
 
   private bumpState: { readonly direction: Direction; readonly startMs: number } | null = null;
+  /** 目前顯示中的大 ✓ ✗ 從什麼時候開始，用來算彈出動畫 */
+  private feedbackState: { readonly feedback: ZoneFeedback; readonly startMs: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, theme: Theme) {
     this.canvas = canvas;
@@ -159,13 +167,28 @@ export class Renderer {
     for (const enemy of scene.enemies) this.drawEnemy(enemy);
     this.drawPlayer(scene.player, nowMs);
 
-    // 走進園區時的大 ✓ ✗，蓋在玩家上面
-    const zone = scene.feedback === null ? undefined : scene.maze.zones[scene.feedback.zoneIndex];
-    if (scene.feedback !== null && zone !== undefined) {
-      const { rect } = zone;
-      const { x, y } = this.center({ x: rect.x + (rect.width - 1) / 2, y: rect.y + (rect.height - 1) / 2 });
-      this.drawMark(ctx, x, y, this.tileSize * 0.95, scene.feedback.kind);
+    this.drawFeedback(scene, nowMs);
+  }
+
+  /** 走進園區時的大 ✓ ✗，蓋在玩家上面；出現時從小彈到原本大小（§12.5） */
+  private drawFeedback(scene: Scene, nowMs: number): void {
+    const { feedback } = scene;
+    const zone = feedback === null ? undefined : scene.maze.zones[feedback.zoneIndex];
+    if (feedback === null || zone === undefined) {
+      this.feedbackState = null;
+      return;
     }
+    const shown = this.feedbackState?.feedback;
+    if (shown?.zoneIndex !== feedback.zoneIndex || shown.kind !== feedback.kind) {
+      this.feedbackState = { feedback, startMs: nowMs };
+    }
+    const startMs = this.feedbackState?.startMs ?? nowMs;
+    const t = Math.min(1, Math.max(0, (nowMs - startMs) / MARK_POP_MS));
+    const scale = this.reducedMotion ? 1 : MARK_POP_FROM + (1 - MARK_POP_FROM) * easeOutBack(t);
+
+    const { rect } = zone;
+    const { x, y } = this.center({ x: rect.x + (rect.width - 1) / 2, y: rect.y + (rect.height - 1) / 2 });
+    this.drawMark(this.ctx, x, y, this.tileSize * 0.95 * scale, feedback.kind);
   }
 
   // ─── 靜態圖層 ───────────────────────────────────────────────
@@ -197,13 +220,10 @@ export class Renderer {
     const { theme, tileSize: s } = this;
     const { grid } = scene.maze;
 
+    // 先整片鋪上步道，再畫樹籬；迷宮外框四個角是圓的，圓角外面的步道色和頁面底色相同
     ctx.fillStyle = theme.path;
     ctx.fillRect(0, 0, grid.width * s, grid.height * s);
-
-    ctx.fillStyle = theme.hedge;
-    for (const tile of grid.allTiles()) {
-      if (!grid.isFloor(tile)) ctx.fillRect(tile.x * s, tile.y * s, s, s);
-    }
+    this.drawHedges(ctx, scene.maze);
 
     scene.maze.zones.forEach((zone, i) => {
       const sealed = scene.sealed[i] ?? false;
@@ -212,6 +232,36 @@ export class Renderer {
     });
 
     if (scene.debug !== null) this.drawDebug(ctx, scene.maze, scene.debug);
+  }
+
+  /**
+   * 樹籬（牆）：每格牆是一個方塊，但凸出去的角（相鄰兩側都不是牆）畫成圓角，
+   * 牆的末端和迷宮外圍的四個角就會是圓的，看起來像修剪過的樹籬。不加花紋或漸層（§12.3）。
+   * 所有方塊合成一條路徑一次填滿，相鄰方塊之間才不會出現細縫。
+   */
+  private drawHedges(ctx: CanvasRenderingContext2D, maze: Maze): void {
+    const { grid } = maze;
+    const s = this.tileSize;
+    const r = s * HEDGE_CORNER_RATIO;
+    // 迷宮外面算「不是牆」，外框的四個角才會變圓；外框其他地方的外側只有一面開放，不受影響
+    const open = (x: number, y: number): boolean => !grid.inBounds({ x, y }) || grid.isFloor({ x, y });
+
+    ctx.beginPath();
+    for (const { x, y } of grid.allTiles()) {
+      if (grid.isFloor({ x, y })) continue;
+      const up = open(x, y - 1);
+      const down = open(x, y + 1);
+      const left = open(x - 1, y);
+      const right = open(x + 1, y);
+      appendRoundedRect(ctx, x * s, y * s, s, s, {
+        topLeft: up && left ? r : 0,
+        topRight: up && right ? r : 0,
+        bottomRight: down && right ? r : 0,
+        bottomLeft: down && left ? r : 0,
+      });
+    }
+    ctx.fillStyle = this.theme.hedge;
+    ctx.fill();
   }
 
   /** 格子中心的 CSS px 座標 */
@@ -240,16 +290,18 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     if (label.image === null) {
       // 沒有圖片時只顯示文字，字級放大；放不下就縮小，最小 12 px（§8）
-      const fitted = this.fitText(ctx, label.text, w - pad * 2, s * 0.8, 'bold');
+      const fitted = this.fitText(ctx, label.text, w - pad * 2, Math.max(MIN_LABEL_FONT_PX, s * 0.8), 'bold');
       ctx.font = fitted.font;
       ctx.fillText(fitted.text, x + w / 2, y + h / 2);
     } else {
       // 有圖片：圖片在上、文字在下。圖片等比縮放、不裁切，放進剩下的空間
-      const textHeight = label.text === '' ? 0 : Math.max(MIN_LABEL_FONT_PX, s * 0.42) * 1.25;
+      // 格子很小時（例如 iPad mini 直向）字級也不低於 12 px（§8）
+      const labelSize = Math.max(MIN_LABEL_FONT_PX, s * 0.42);
+      const textHeight = label.text === '' ? 0 : labelSize * 1.25;
       const box = { x: x + pad, y: y + pad, width: w - pad * 2, height: h - pad * 2 - textHeight };
       drawContained(ctx, label.image, box);
       if (label.text !== '') {
-        const fitted = this.fitText(ctx, label.text, w - pad * 2, s * 0.42, 'bold');
+        const fitted = this.fitText(ctx, label.text, w - pad * 2, labelSize, 'bold');
         ctx.font = fitted.font;
         ctx.fillText(fitted.text, x + w / 2, y + h - pad - textHeight / 2);
       }
@@ -258,7 +310,7 @@ export class Renderer {
     // 答錯封住的園區：變暗並保留 ✗（§8）；✗ 放在角落，選項文字仍看得到
     if (sealed) {
       roundedRectPath(ctx, x, y, w, h, s * 0.25);
-      ctx.fillStyle = 'rgba(31, 42, 36, 0.45)';
+      ctx.fillStyle = theme.sealedShade;
       ctx.fill();
       this.drawMark(ctx, x + w - s * 0.32, y + s * 0.32, s * 0.3, 'wrong');
     }
@@ -281,7 +333,7 @@ export class Renderer {
     else ctx.fillRect(x, y + (s - thickness) / 2, s, thickness);
 
     // 柵欄上的白色橫條，讓它看起來像柵門而不只是一條紅線
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = theme.outline;
     for (const t of [0.3, 0.7]) {
       if (across === 'vertical') ctx.fillRect(x + (s - thickness) / 2, y + s * t - s * 0.04, thickness, s * 0.08);
       else ctx.fillRect(x + s * t - s * 0.04, y + (s - thickness) / 2, s * 0.08, thickness);
@@ -296,9 +348,9 @@ export class Renderer {
     ctx.fillStyle = kind === 'correct' ? theme.correct : theme.wrong;
     ctx.fill();
     ctx.lineWidth = Math.max(1.5, radius * 0.12);
-    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeStyle = theme.outline;
     ctx.stroke();
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = theme.outline;
     ctx.font = `bold ${Math.round(radius * 1.25)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -392,8 +444,10 @@ export class Renderer {
     let { x, y } = this.center(player);
 
     if (this.bumpState !== null) {
-      const t = (nowMs - this.bumpState.startMs) / BUMP_MS;
-      if (t < 0 || t >= 1) {
+      // 開始時間是按鍵當下的 performance.now()，可能比這一幀的時間戳記晚一點，所以 t 可能是負的；
+      // 負的就當作剛開始，不要把抖動丟掉
+      const t = Math.max(0, (nowMs - this.bumpState.startMs) / BUMP_MS);
+      if (t >= 1) {
         this.bumpState = null;
       } else {
         // 往牆的方向來回抖兩下，幅度逐漸變小
@@ -419,7 +473,7 @@ export class Renderer {
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.lineWidth = Math.max(1, s * 0.06);
-    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeStyle = theme.outline;
     ctx.stroke();
     ctx.restore();
     // 受傷動畫期間不畫方向箭頭
@@ -433,7 +487,7 @@ export class Renderer {
         ctx.lineTo(-r * 0.28, -r * 0.46);
         ctx.lineTo(-r * 0.28, r * 0.46);
         ctx.closePath();
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = theme.outline;
         ctx.fill();
       });
     }
@@ -500,7 +554,7 @@ export class Renderer {
     ctx.fill();
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(1, s * 0.06);
-    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeStyle = theme.outline;
     ctx.stroke();
 
     // 眼睛：瞳孔往前進方向偏；三角形的眼睛往下放，才放得進去
@@ -510,7 +564,7 @@ export class Renderer {
       const ex = side * r * 0.32;
       ctx.beginPath();
       ctx.arc(ex, eyeY, r * 0.24, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillStyle = theme.outline;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(ex + look.x * r * 0.1, eyeY + look.y * r * 0.1, r * 0.12, 0, Math.PI * 2);
@@ -564,10 +618,22 @@ function drawContained(ctx: CanvasRenderingContext2D, image: HTMLImageElement, b
   ctx.drawImage(image, box.x + (box.width - width) / 2, box.y + (box.height - height) / 2, width, height);
 }
 
-/**
- * 圓角矩形的路徑。不用 ctx.roundRect()：它要 Safari 16 以上，
- * 學校裡停在 iPadOS 15 的舊 iPad 會直接出錯、畫面全白。
- */
+/** 超過 1 之後再回彈的緩動曲線（easeOutBack），t 介於 0–1 */
+function easeOutBack(t: number): number {
+  const overshoot = 1.70158;
+  const u = t - 1;
+  return 1 + (overshoot + 1) * u * u * u + overshoot * u * u;
+}
+
+/** 矩形四個角各自的圓角半徑；0 就是直角 */
+interface CornerRadii {
+  readonly topLeft: number;
+  readonly topRight: number;
+  readonly bottomRight: number;
+  readonly bottomLeft: number;
+}
+
+/** 四個角都一樣圓的圓角矩形，開一條新路徑 */
 function roundedRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -576,13 +642,34 @@ function roundedRectPath(
   height: number,
   radius: number,
 ): void {
-  const r = Math.min(radius, width / 2, height / 2);
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
+  appendRoundedRect(ctx, x, y, width, height, {
+    topLeft: radius,
+    topRight: radius,
+    bottomRight: radius,
+    bottomLeft: radius,
+  });
+}
+
+/**
+ * 在目前的路徑上加一個圓角矩形（順時針，不開新路徑，可以連續加好幾個再一次填滿）。
+ * 不用 ctx.roundRect()：它要 Safari 16 以上，學校裡停在 iPadOS 15 的舊 iPad 會直接出錯、畫面全白。
+ */
+function appendRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radii: CornerRadii,
+): void {
+  const limit = (radius: number): number => Math.min(radius, width / 2, height / 2);
+  const topLeft = limit(radii.topLeft);
+  ctx.moveTo(x + topLeft, y);
+  ctx.arcTo(x + width, y, x + width, y + height, limit(radii.topRight));
+  ctx.arcTo(x + width, y + height, x, y + height, limit(radii.bottomRight));
+  ctx.arcTo(x, y + height, x, y, limit(radii.bottomLeft));
+  ctx.arcTo(x, y, x + width, y, topLeft);
   ctx.closePath();
 }
 

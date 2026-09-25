@@ -79,7 +79,7 @@ async function start(): Promise<void> {
   const quizUrl = new URL(quizJsonPath(params.quizId), document.baseURI);
 
   showLoading(overlay, 0);
-  const result = await loadQuiz(quizUrl, (progress) => showLoading(overlay, progress));
+  const result = await loadQuiz(quizUrl, ZOO_THEME.quizFontFamily, (progress) => showLoading(overlay, progress));
   if (!result.ok) {
     showError(overlay, result.errors, quizUrl.pathname);
     return;

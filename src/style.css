@@ -1,10 +1,30 @@
-/* 顏色與 render/theme.ts 的 token 相同（§12.3） */
+/* 題目與選項文字的字型 Andika（§12.4）：SIL Open Font License 1.1，授權檔是 public/fonts/OFL.txt。
+   只放用得到的兩個字重（題目是一般、選項與標題是粗體）；loader.ts 在載入階段就先下載好，
+   canvas 畫選項文字時才不會畫成後備字型 */
+@font-face {
+  font-family: 'Andika';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Andika-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Andika';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/Andika-Bold.woff2') format('woff2');
+}
+
 /* 整頁不允許兩指縮放與雙擊縮放，但保留捲動（圖片來源清單要捲）；
    touch-action 會和祖先的值取交集，所以設在 html 上就對所有元素有效 */
 html {
   touch-action: pan-x pan-y;
 }
 
+/* 視覺主題（§12.3）：DOM 用到的顏色都集中在這裡。
+   前七個和 render/theme.ts 的 token 相同，由 render/theme.test.ts 檢查是否一致 */
 :root {
   --hedge: #2f5e3b;
   --path: #ead9a6;
@@ -13,12 +33,26 @@ html {
   --correct: #2e9e4f;
   --wrong: #c4402f;
   --card: #ffffff;
-  --muted: #5b665f;
+
+  --muted: #5b665f; /* 次要文字 */
+  --on-hedge: #ffffff; /* 深綠底上的文字 */
+  --hedge-pressed: #244a2e; /* 主要按鈕滑過或按下 */
+  --tint: #f5edd6; /* 次要按鈕滑過或按下 */
+  --correct-text: #1e7a3c; /* 比 --correct 深一點，白底上的對比才夠 4.5:1 */
+  --retry: #b7791f; /* 逐題回顧：答錯後才答對 */
+  --highlight: #fff4c2; /* 排行榜上剛登錄的那一筆 */
+  --thumb: #f4f1e8; /* 縮圖的底色 */
+  --rule: rgb(31 42 36 / 0.12); /* 清單的分隔線（--ink 的半透明） */
+  --backdrop: rgb(234 217 166 / 0.85); /* 疊在遊戲畫面上的覆蓋層（--path 的半透明） */
+  --shadow: rgb(31 42 36 / 0.18); /* 卡片的陰影 */
+  --message: rgb(255 255 255 / 0.92); /* 迷宮中央的提示（「預備」）底色 */
 
   --font-ui: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
-  /* 題目與選項文字；Andika 字型檔在 M7 加入，之前先用後備字型 */
+  /* 題目與選項文字（§12.4）；Andika 沒有中文字，中文會用後備字型 */
   --font-quiz: 'Andika', var(--font-ui);
 
+  /* 只有淺色主題：瀏覽器開了深色模式時，輸入框與捲軸也不要變成深色 */
+  color-scheme: light;
   color: var(--ink);
   background: var(--path);
   font-family: var(--font-ui);
@@ -62,7 +96,7 @@ body {
 
 /* 疊在遊戲畫面上時，加一層半透明底色 */
 .overlay.backdrop {
-  background: rgb(234 217 166 / 0.85);
+  background: var(--backdrop);
 }
 
 /* 圖片來源、排行榜、結算；.card 的規則寫在後面，所以這裡要用兩個 class 提高優先順序 */
@@ -87,7 +121,7 @@ body {
 .leaderboard th,
 .leaderboard td {
   padding: 6px 8px;
-  border-bottom: 1px solid rgb(31 42 36 / 0.12);
+  border-bottom: 1px solid var(--rule);
   text-align: center;
 }
 
@@ -108,7 +142,7 @@ body {
 
 .leaderboard-new td,
 .leaderboard-new th {
-  background: #fff4c2;
+  background: var(--highlight);
   font-weight: 700;
 }
 
@@ -163,7 +197,7 @@ body {
 
 .ranking-saved {
   font-weight: 700;
-  color: #1e7a3c; /* 比 --correct 深一點，白底上的對比才夠 4.5:1 */
+  color: var(--correct-text);
 }
 
 /* 看不到但螢幕閱讀器唸得到 */
@@ -200,7 +234,7 @@ body {
 
 .review-item {
   padding: 12px 0;
-  border-top: 1px solid rgb(31 42 36 / 0.12);
+  border-top: 1px solid var(--rule);
 }
 
 .review-status {
@@ -217,7 +251,7 @@ body {
   width: 1.5em;
   height: 1.5em;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-hedge);
   background: var(--muted);
 }
 
@@ -226,7 +260,7 @@ body {
 }
 
 .review-retry .review-symbol {
-  background: #b7791f;
+  background: var(--retry);
 }
 
 .review-question {
@@ -280,7 +314,7 @@ body {
   height: 36px;
   object-fit: contain;
   border-radius: 4px;
-  background: #f4f1e8;
+  background: var(--thumb);
 }
 
 .credit-list {
@@ -294,7 +328,7 @@ body {
   gap: 12px;
   align-items: flex-start;
   padding: 10px 0;
-  border-top: 1px solid rgb(31 42 36 / 0.12);
+  border-top: 1px solid var(--rule);
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
@@ -308,7 +342,7 @@ body {
   width: 72px;
   height: 72px;
   object-fit: contain;
-  background: #f4f1e8;
+  background: var(--thumb);
   border-radius: 6px;
 }
 
@@ -336,7 +370,7 @@ body {
   padding: 2rem;
   background: var(--card);
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgb(31 42 36 / 0.15);
+  box-shadow: 0 2px 12px var(--shadow);
   text-align: center;
 }
 
@@ -401,17 +435,44 @@ progress {
   font: inherit;
   font-size: 1.05rem;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent; /* 已經有按下的樣子，不要 iPad 的灰色方塊 */
 }
 
 .btn-primary {
   background: var(--hedge);
-  color: #fff;
+  color: var(--on-hedge);
   font-weight: 700;
 }
 
 .btn-secondary {
   background: var(--card);
   color: var(--hedge);
+}
+
+/* 滑過與按下：只在有滑鼠的裝置顯示滑過的樣子，平板上點完才不會一直停在那個顏色。
+   按下是回應玩家的動作，但不加轉場動畫（§12.5）。
+   iPad 的 Safari 要頁面上有 touchstart 監聽才會套用 :active；input/zoomGuard.ts 在 document 上註冊了一個 */
+@media (hover: hover) {
+  .btn-primary:hover {
+    background: var(--hedge-pressed);
+    border-color: var(--hedge-pressed);
+  }
+
+  .btn-secondary:hover,
+  .icon-btn:enabled:hover,
+  .segmented label:hover input:not(:checked) + span {
+    background: var(--tint);
+  }
+}
+
+.btn-primary:active {
+  background: var(--hedge-pressed);
+  border-color: var(--hedge-pressed);
+}
+
+.btn-secondary:active,
+.icon-btn:enabled:active {
+  background: var(--tint);
 }
 
 /* 看得見的鍵盤焦點（§12.5） */
@@ -474,6 +535,7 @@ progress {
   background: var(--card);
   color: var(--hedge);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .icon-btn svg {
@@ -532,9 +594,9 @@ progress {
   left: 50%;
   transform: translate(-50%, calc(-50% - 1.6em));
   padding: 0.3em 1.2em;
-  background: rgb(255 255 255 / 0.92);
+  background: var(--message);
   border-radius: 999px;
-  box-shadow: 0 2px 12px rgb(31 42 36 / 0.2);
+  box-shadow: 0 2px 12px var(--shadow);
   font-size: clamp(1.5rem, 5vmin, 2.5rem);
   font-weight: 700;
   pointer-events: none;
@@ -647,7 +709,7 @@ progress {
 .dpad[data-active='right'] .dpad-right,
 .dpad[data-active='down'] .dpad-down {
   background: var(--hedge);
-  color: #fff;
+  color: var(--on-hedge);
 }
 
 /* 標題畫面的方向鍵設定：三個選項並排，每個至少 44 px 高 */
@@ -669,6 +731,7 @@ progress {
 
 .segmented label {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 看得到的是選項後面的文字；:checked + span 在舊版 iPad Safari 也能用（:has() 要 15.4 以上） */
@@ -703,7 +766,7 @@ progress {
 
 .segmented input:checked + span {
   background: var(--hedge);
-  color: #fff;
+  color: var(--on-hedge);
   font-weight: 700;
 }
 
