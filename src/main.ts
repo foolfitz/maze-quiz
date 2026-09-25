@@ -22,7 +22,7 @@ import {
 import { bfs } from './core/grid';
 import { isCorridor } from './core/maze';
 import { seedFromText } from './core/rng';
-import type { GameOptions } from './core/quiz';
+import { localizeQuiz, quizLanguages, type GameOptions, type QuizFile } from './core/quiz';
 import {
   addEntry,
   computeScore,
@@ -49,7 +49,15 @@ import {
 import { ZOO_THEME } from './render/theme';
 import { isStorageUsable, loadLeaderboard, saveLeaderboard } from './storage/leaderboard';
 import { getLocalStorage } from './storage/localStorage';
-import { loadDpadSide, saveDpadSide, type DpadSide } from './storage/preferences';
+import {
+  loadDifficulty,
+  loadDpadSide,
+  loadLanguage,
+  saveDifficulty,
+  saveDpadSide,
+  saveLanguage,
+  type DpadSide,
+} from './storage/preferences';
 import { renderDebugPanel, updateDebugFps, updateDebugLine } from './ui/debugPanel';
 import { requireElement } from './ui/dom';
 import { formatClock } from './ui/format';
@@ -87,7 +95,6 @@ async function start(): Promise<void> {
 
   const data = result.data;
   for (const warning of data.warnings) console.warn(`[題組警告] ${warning}`);
-  document.title = `${data.quiz.title} – ${STRINGS.appName}`;
   runApp(data, params, overlay);
 }
 
@@ -119,14 +126,17 @@ function roundedElapsedMs(state: GameState): number {
   return Math.round(state.elapsedMs);
 }
 
-/** 排行榜與結算畫面上說明目前設定，例如「難度 3、3 條命、正計時」 */
-function settingsText(options: GameOptions): string {
+/**
+ * 排行榜上說明目前設定，例如「難度 2、3 條命、正計時」；
+ * 題組有好幾種語言時再加上語言名稱（languageName 是 null 表示題組只有一種語言）
+ */
+function settingsText(options: GameOptions, languageName: string | null): string {
   const T = STRINGS.timerModes;
   const timer =
     options.timerMode === 'countDown'
       ? T.countDown(formatClock(options.countDownSeconds * 1000, 'up'))
       : T[options.timerMode];
-  return STRINGS.settingsSummary(options.difficulty, options.lives, timer);
+  return STRINGS.settingsSummary(options.difficulty, options.lives, timer, languageName);
 }
 
 /** 玩家要畫成什麼樣子：受傷動畫、重生後的無敵，或平常。無敵只在 playing 倒數，其他時候全場靜止、不閃爍。 */
@@ -137,7 +147,6 @@ function playerCondition(phase: Phase, level: Level): PlayerCondition {
 
 /** 組裝畫面、輸入與遊戲迴圈。遊戲規則都在 core/game.ts，這裡只負責把狀態顯示出來。 */
 function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): void {
-  const { quiz } = data;
   const gameRoot = requireElement('game', HTMLDivElement);
   const stage = requireElement('stage', HTMLDivElement);
   const canvas = requireElement('maze-canvas', HTMLCanvasElement);
@@ -152,8 +161,35 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const dpad = requireElement('dpad', HTMLDivElement);
 
   const fixedSeed = params.seed === null ? null : seedFromText(params.seed);
-  // 網址參數 difficulty、lives、timer、seconds 蓋過題組的設定（測試用，見 DECISIONS.md）
-  const options: GameOptions = { ...data.options, ...params.overrides };
+  // 語言、難度與方向鍵位置：標題畫面上選的記在這台裝置上
+  const preferences = getLocalStorage();
+
+  // 語言（標題畫面選）：換語言時整份題組換成那個語言的版本，遊戲其他部分照常用 quiz
+  const baseQuiz = data.quiz;
+  const languages = quizLanguages(baseQuiz);
+  let language = loadLanguage(
+    preferences,
+    baseQuiz.id,
+    languages.map((l) => l.locale),
+    baseQuiz.locale,
+  );
+  let quiz: QuizFile = localizeQuiz(baseQuiz, language);
+  const showDocumentTitle = (): void => {
+    document.title = `${quiz.title} – ${STRINGS.appName}`;
+  };
+  showDocumentTitle();
+  /** 排行榜用：玩的是翻譯版本時是語言代碼，原文是 null（見 core/scoring.ts 的 optionsKey） */
+  const translationOf = (played: QuizFile): string | null => (played.locale === baseQuiz.locale ? null : played.locale);
+  /** 題組有好幾種語言時，排行榜的設定說明加上語言名稱 */
+  const languageLabel = (): string | null =>
+    languages.length > 1 ? (languages.find((l) => l.locale === language)?.name ?? language) : null;
+
+  // 難度（標題畫面選）；網址參數 difficulty、lives、timer、seconds 蓋過題組的設定（測試用，見 DECISIONS.md）
+  let options: GameOptions = {
+    ...data.options,
+    ...params.overrides,
+    difficulty: params.overrides.difficulty ?? loadDifficulty(preferences, data.options.difficulty),
+  };
   const mazeConfig = CONFIG.maze;
   const renderer = new Renderer(canvas, ZOO_THEME);
 
@@ -165,7 +201,6 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   });
 
   // 觸控方向鍵：有觸控螢幕的裝置預設放右邊，否則不顯示；使用者在標題畫面改過就記在這台裝置上
-  const preferences = getLocalStorage();
   const hasTouch = window.matchMedia('(any-pointer: coarse)').matches;
   let dpadSide = loadDpadSide(preferences, hasTouch ? 'right' : 'off');
   const applyDpadSide = (side: DpadSide): void => {
@@ -207,6 +242,21 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
       onStart: beginGame,
       onLeaderboard: showTitleLeaderboard,
       onCredits: () => showCredits(overlay, quiz, data.images, showTitleScreen),
+      languages,
+      language,
+      onLanguageChange: (locale) => {
+        // 先換好題組再記住選擇：萬一換的時候出錯，下次開啟也不會一直卡在這個語言
+        quiz = localizeQuiz(baseQuiz, locale);
+        language = locale;
+        saveLanguage(preferences, baseQuiz.id, locale);
+        showDocumentTitle();
+        return quiz;
+      },
+      difficulty: options.difficulty,
+      onDifficultyChange: (difficulty) => {
+        options = { ...options, difficulty };
+        saveDifficulty(preferences, difficulty);
+      },
       dpadSide,
       onDpadSideChange: (side) => {
         dpadSide = side;
@@ -216,17 +266,17 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
     });
   };
 
-  /** 標題畫面按「排行榜」：只列出和目前設定相同的紀錄（§11.2） */
+  /** 標題畫面按「排行榜」：只列出和目前設定（含語言）相同的紀錄（§11.2） */
   const showTitleLeaderboard = (): void => {
     const storage = getLocalStorage();
     const content: LeaderboardContent = isStorageUsable(storage)
       ? {
           kind: 'entries',
-          entries: entriesFor(loadLeaderboard(storage, quiz.id), optionsKey(options)),
+          entries: entriesFor(loadLeaderboard(storage, quiz.id), optionsKey(options, translationOf(quiz))),
           showTime: options.timerMode !== 'none',
         }
       : { kind: 'unavailable' };
-    showLeaderboardScreen(overlay, content, settingsText(options), showTitleScreen);
+    showLeaderboardScreen(overlay, content, settingsText(options, languageLabel()), showTitleScreen);
   };
 
   /**
@@ -244,7 +294,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
       total: finished.order.length,
       elapsedMs: roundedElapsedMs(finished),
       livesLeft: finished.lives,
-      optionsKey: optionsKey(finished.options),
+      optionsKey: optionsKey(finished.options, translationOf(finished.quiz)),
       playedAt: new Date().toISOString(),
     });
     if (!qualifies(loadLeaderboard(storage, quiz.id), makeEntry(''), maxEntries)) {
@@ -281,8 +331,8 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
           livesLeft: finished.lives,
         },
         ranking: rankingPanel(finished),
-        review: finished.options.showAnswersAtEnd ? buildReview(quiz, finished.results, data.images) : null,
-        locale: quiz.locale,
+        review: finished.options.showAnswersAtEnd ? buildReview(finished.quiz, finished.results, data.images) : null,
+        locale: finished.quiz.locale,
       },
       showTitleScreen,
     );
@@ -300,7 +350,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
       promptText,
       promptImage,
       level.question.prompt,
-      quiz.locale,
+      state.quiz.locale,
       questionImage === undefined ? null : (data.images.get(questionImage) ?? null),
     );
 

@@ -33,12 +33,19 @@ describe('optionsKey', () => {
   });
 
   it('倒數時加上秒數；其他計時方式不受秒數影響', () => {
-    expect(optionsKey({ difficulty: 5, lives: 1, timerMode: 'countDown', countDownSeconds: 120 })).toBe(
-      'd5-l1-countDown-120',
+    expect(optionsKey({ difficulty: 2, lives: 1, timerMode: 'countDown', countDownSeconds: 120 })).toBe(
+      'd2-l1-countDown-120',
     );
     expect(optionsKey({ difficulty: 1, lives: 9, timerMode: 'none', countDownSeconds: 120 })).toBe(
       optionsKey({ difficulty: 1, lives: 9, timerMode: 'none', countDownSeconds: 999 }),
     );
+  });
+
+  it('翻譯版本在最後加上語言代碼；原文不加', () => {
+    const options = { difficulty: 2, lives: 3, timerMode: 'countUp', countDownSeconds: 300 } as const;
+    expect(optionsKey(options, 'zh-Hant')).toBe('d2-l3-countUp-zh-Hant');
+    expect(optionsKey(options, null)).toBe('d2-l3-countUp');
+    expect(optionsKey({ ...options, timerMode: 'countDown' }, 'zh-Hant')).toBe('d2-l3-countDown-300-zh-Hant');
   });
 });
 

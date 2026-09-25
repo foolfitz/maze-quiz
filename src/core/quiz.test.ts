@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import sampleQuiz from '../../public/quizzes/zoo-animals/quiz.json';
 import { DEFAULT_GAME_OPTIONS } from '../config';
-import { resolveOptions, validateQuiz } from './quiz';
+import { localizeQuiz, quizLanguages, resolveOptions, validateQuiz, type QuizFile } from './quiz';
 
 // ─── 建立測試資料的小工具 ─────────────────────────────────────
 // 每次呼叫都回傳新的物件，測試之間不會互相影響。
@@ -209,7 +209,7 @@ describe('錯誤：options 超出範圍', () => {
     ['lives', 2.5],
     ['lives', '3'],
     ['difficulty', 0],
-    ['difficulty', 6],
+    ['difficulty', 4],
     ['difficulty', 2.5],
     ['countDownSeconds', 29],
     ['countDownSeconds', 3601],
@@ -223,7 +223,7 @@ describe('錯誤：options 超出範圍', () => {
   it('邊界值可以通過', () => {
     for (const options of [
       { lives: 1, difficulty: 1, countDownSeconds: 30 },
-      { lives: 9, difficulty: 5, countDownSeconds: 3600 },
+      { lives: 9, difficulty: 3, countDownSeconds: 3600 },
     ]) {
       expect(warningsOf(quiz({ options }))).toEqual([]);
     }
@@ -347,15 +347,217 @@ describe('resolveOptions', () => {
       timerMode: 'countUp',
       countDownSeconds: 300,
       lives: 3,
-      difficulty: 3,
+      difficulty: 2, // 使用者指定（§4.1 原本是 3）
       shuffleQuestions: true,
       showAnswersAtEnd: true,
     });
   });
 
-  it('範例題組關閉題目洗牌', () => {
+  it('範例題組照預設打亂題目順序', () => {
     const result = validateQuiz(sampleQuiz);
     if (!result.ok) throw new Error('範例題組應該通過驗證');
-    expect(resolveOptions(result.quiz.options).shuffleQuestions).toBe(false);
+    expect(resolveOptions(result.quiz.options).shuffleQuestions).toBe(true);
+  });
+});
+
+// ─── 語言版本 ───────────────────────────────────────────────
+
+/** 最小題組（q1：a、b）的中文翻譯 */
+function zhTranslation(extra: Record<string, unknown> = {}) {
+  return {
+    languageName: '中文',
+    title: '測試題組',
+    questions: { q1: { prompt: '第一題', choices: { a: '甲', b: '乙' } } },
+    ...extra,
+  };
+}
+
+function withTranslation(translation: unknown) {
+  return quiz({ languageName: 'English', translations: { 'zh-Hant': translation } });
+}
+
+describe('translations', () => {
+  it('完整的翻譯可以通過，沒有警告', () => {
+    expect(warningsOf(withTranslation(zhTranslation()))).toEqual([]);
+  });
+
+  it('有翻譯時，原文也要寫 languageName', () => {
+    expectSingleAt(errorsOf(quiz({ translations: { 'zh-Hant': zhTranslation() } })), 'languageName');
+  });
+
+  it('沒有翻譯時可以不寫 languageName', () => {
+    expect(warningsOf(quiz())).toEqual([]);
+  });
+
+  it('翻譯的語言代碼不能和原文相同', () => {
+    const raw = quiz({ languageName: 'English', translations: { en: zhTranslation() } });
+    expectSingleAt(errorsOf(raw), 'translations.en');
+  });
+
+  it('缺少某一題的翻譯', () => {
+    expectSingleAt(errorsOf(withTranslation(zhTranslation({ questions: {} }))), 'translations.zh-Hant.questions');
+  });
+
+  it('多出題組裡沒有的題目 id', () => {
+    const questions = { q1: { prompt: '第一題', choices: { a: '甲', b: '乙' } }, q9: { prompt: '?', choices: {} } };
+    expectSingleAt(errorsOf(withTranslation(zhTranslation({ questions }))), 'translations.zh-Hant.questions.q9');
+  });
+
+  it('缺少某個選項的翻譯', () => {
+    const questions = { q1: { prompt: '第一題', choices: { a: '甲' } } };
+    expectSingleAt(errorsOf(withTranslation(zhTranslation({ questions }))), 'translations.zh-Hant.questions.q1.choices');
+  });
+
+  it('多出這一題沒有的選項 id', () => {
+    const questions = { q1: { prompt: '第一題', choices: { a: '甲', b: '乙', c: '丙' } } };
+    expectSingleAt(
+      errorsOf(withTranslation(zhTranslation({ questions }))),
+      'translations.zh-Hant.questions.q1.choices.c',
+    );
+  });
+
+  it('題目與沒有圖片的選項不能是空的', () => {
+    const emptyPrompt = { q1: { prompt: ' ', choices: { a: '甲', b: '乙' } } };
+    expectSingleAt(
+      errorsOf(withTranslation(zhTranslation({ questions: emptyPrompt }))),
+      'translations.zh-Hant.questions.q1.prompt',
+    );
+    const emptyChoice = { q1: { prompt: '第一題', choices: { a: '', b: '乙' } } };
+    expectSingleAt(
+      errorsOf(withTranslation(zhTranslation({ questions: emptyChoice }))),
+      'translations.zh-Hant.questions.q1.choices.a',
+    );
+  });
+
+  it('有圖片的選項翻譯可以不寫字', () => {
+    const raw = quiz({
+      languageName: 'English',
+      questions: [question('q1', [choice('a', true, { image: 'cat' }), choice('b')])],
+      translations: { 'zh-Hant': zhTranslation({ questions: { q1: { prompt: '第一題', choices: { a: '', b: '乙' } } } }) },
+    });
+    expect(warningsOf(raw)).toEqual([]);
+  });
+
+  it('翻譯的文字也會檢查長度', () => {
+    const questions = { q1: { prompt: '第一題', choices: { a: '甲'.repeat(21), b: '乙' } } };
+    expectSingleAt(
+      warningsOf(withTranslation(zhTranslation({ questions }))),
+      'translations.zh-Hant.questions.q1.choices.a',
+    );
+  });
+
+  it('語言代碼要合法，大小寫不同也算同一個語言', () => {
+    for (const locale of ['__proto__', ' zh-Hant', 'not a locale']) {
+      const raw = quiz({ languageName: 'English', translations: { [locale]: zhTranslation() } });
+      expectSingleAt(errorsOf(raw), `translations.${locale}`);
+    }
+    const sameAsBase = quiz({ languageName: 'English', translations: { EN: zhTranslation() } });
+    expectSingleAt(errorsOf(sameAsBase), 'translations.EN');
+  });
+
+  it('id 剛好是 Object.prototype 上的名字（toString、constructor）時，缺翻譯照樣抓得到', () => {
+    const raw = quiz({
+      languageName: 'English',
+      questions: [question('constructor', [choice('toString', true), choice('b')])],
+      translations: { 'zh-Hant': zhTranslation({ questions: {} }) },
+    });
+    expectSingleAt(errorsOf(raw), 'translations.zh-Hant.questions');
+    const missingChoice = quiz({
+      languageName: 'English',
+      questions: [question('constructor', [choice('toString', true), choice('b')])],
+      translations: { 'zh-Hant': zhTranslation({ questions: { constructor: { prompt: '題', choices: { b: '乙' } } } }) },
+    });
+    expectSingleAt(errorsOf(missingChoice), 'translations.zh-Hant.questions.constructor.choices');
+  });
+
+  it('localizeQuiz 遇到這種 id 也照常換字', () => {
+    const result = validateQuiz(
+      quiz({
+        languageName: 'English',
+        questions: [question('constructor', [choice('toString', true), choice('b')])],
+        translations: {
+          'zh-Hant': zhTranslation({ questions: { constructor: { prompt: '題', choices: { toString: '甲', b: '乙' } } } }),
+        },
+      }),
+    );
+    if (!result.ok) throw new Error(result.errors.join('\n'));
+    const zh = localizeQuiz(result.quiz, 'zh-Hant');
+    expect(zh.questions[0]?.prompt).toBe('題');
+    expect(zh.questions[0]?.choices.map((c) => c.text)).toEqual(['甲', '乙']);
+  });
+
+  it('格式不對：translations、翻譯本身、題目、choices 都要是物件', () => {
+    expectSingleAt(errorsOf(quiz({ languageName: 'English', translations: [] })), 'translations');
+    expectSingleAt(errorsOf(withTranslation('中文')), 'translations.zh-Hant');
+    expectSingleAt(errorsOf(withTranslation(zhTranslation({ questions: { q1: '第一題' } }))), 'translations.zh-Hant.questions.q1');
+    const badChoices = { q1: { prompt: '第一題', choices: ['甲', '乙'] } };
+    expectSingleAt(
+      errorsOf(withTranslation(zhTranslation({ questions: badChoices }))),
+      'translations.zh-Hant.questions.q1.choices',
+    );
+  });
+
+  it('沒有翻譯時，languageName 寫了也要是文字', () => {
+    expectSingleAt(errorsOf(quiz({ languageName: 3 })), 'languageName');
+  });
+
+  it('原文的題目有錯時，不會因為不知道有沒有圖片而誤報翻譯是空的', () => {
+    const raw = quiz({
+      languageName: 'English',
+      questions: [
+        question('q1', [choice('a', true, { image: 'cat' }), choice('b')]),
+        question('q1', [choice('a', true), choice('b')]),
+      ],
+      translations: { 'zh-Hant': zhTranslation({ questions: { q1: { prompt: '第一題', choices: { a: '', b: '乙' } } } }) },
+    });
+    expect(errorsOf(raw).filter((message) => message.startsWith('translations'))).toEqual([]);
+  });
+
+  it('缺少 languageName 或 title', () => {
+    const { languageName: _name, ...noName } = zhTranslation();
+    expectSingleAt(errorsOf(withTranslation(noName)), 'translations.zh-Hant.languageName');
+    const { title: _title, ...noTitle } = zhTranslation();
+    expectSingleAt(errorsOf(withTranslation(noTitle)), 'translations.zh-Hant.title');
+  });
+});
+
+describe('localizeQuiz 與 quizLanguages', () => {
+  const validated = validateQuiz(sampleQuiz);
+  if (!validated.ok) throw new Error('範例題組應該通過驗證');
+  const original: QuizFile = validated.quiz;
+
+  it('範例題組有英文與中文，原文排第一個', () => {
+    expect(quizLanguages(original)).toEqual([
+      { locale: 'en', name: 'English' },
+      { locale: 'zh-Hant', name: '中文' },
+    ]);
+  });
+
+  it('換成中文：標題、題目、選項文字換掉，對錯、圖片、id 與順序不變', () => {
+    const zh = localizeQuiz(original, 'zh-Hant');
+    expect(zh.locale).toBe('zh-Hant');
+    expect(zh.title).toBe('動物園的動物');
+    expect(zh.id).toBe(original.id);
+    expect(zh.images).toBe(original.images);
+    expect(zh.questions[0]?.prompt).toBe('我的體型很大，全身灰色。我有一條長長的鼻子。');
+    zh.questions.forEach((q, i) => {
+      const source = original.questions[i];
+      expect(q.id).toBe(source?.id);
+      expect(q.choices.map(({ id, image, correct }) => ({ id, image, correct }))).toEqual(
+        source?.choices.map(({ id, image, correct }) => ({ id, image, correct })),
+      );
+    });
+    expect(zh.questions[0]?.choices.find((c) => c.correct)?.text).toBe('大象');
+  });
+
+  it('原文或沒有的語言：回傳原本的題組', () => {
+    expect(localizeQuiz(original, 'en')).toBe(original);
+    expect(localizeQuiz(original, 'fr')).toBe(original);
+  });
+
+  it('沒有翻譯的題組只有一種語言，名稱沒寫時用語言代碼', () => {
+    const result = validateQuiz(quiz());
+    if (!result.ok) throw new Error('應該通過驗證');
+    expect(quizLanguages(result.quiz)).toEqual([{ locale: 'en', name: 'en' }]);
   });
 });

@@ -41,13 +41,15 @@ export const CONFIG = {
   },
 } as const;
 
-/** 難度表：enemySpeedRatio 是相對於玩家速度的比例 */
+/**
+ * 難度表：enemySpeedRatio 是相對於玩家速度的比例。
+ * 使用者 2026-09-25 改成三級（附錄 A 原本是五級）：三級只差在敵人的速度，
+ * 敵人數量與聰明程度都是原本難度 3 的值；新的難度 3 就是原本的難度 3。
+ */
 export const DIFFICULTY_TABLE = {
-  1: { enemyCount: 1, enemySpeedRatio: 0.5, smartRatio: 0.25 },
-  2: { enemyCount: 2, enemySpeedRatio: 0.6, smartRatio: 0.45 },
+  1: { enemyCount: 2, enemySpeedRatio: 0.5, smartRatio: 0.65 },
+  2: { enemyCount: 2, enemySpeedRatio: 0.6, smartRatio: 0.65 },
   3: { enemyCount: 2, enemySpeedRatio: 0.7, smartRatio: 0.65 },
-  4: { enemyCount: 3, enemySpeedRatio: 0.8, smartRatio: 0.8 },
-  5: { enemyCount: 3, enemySpeedRatio: 0.9, smartRatio: 0.95 },
 } as const;
 
 /** 題組沒有指定時使用的遊戲設定（§4.1） */
@@ -55,7 +57,7 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
   timerMode: 'countUp',
   countDownSeconds: 300,
   lives: 3,
-  difficulty: 3,
+  difficulty: 2, // 使用者指定（§4.1 原本是 3）
   shuffleQuestions: true,
   showAnswersAtEnd: true,
 };

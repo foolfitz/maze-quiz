@@ -3,7 +3,7 @@
   "id": "zoo-animals",
   "title": "Zoo Animals",
   "locale": "en",
-  "options": { "shuffleQuestions": false },
+  "languageName": "English",
   "images": {
     "elephant": {
       "src": "images/elephant.webp",
@@ -279,5 +279,46 @@
         { "id": "q5-snake", "text": "snake", "image": "snake", "correct": false }
       ]
     }
-  ]
+  ],
+  "translations": {
+    "zh-Hant": {
+      "languageName": "中文",
+      "title": "動物園的動物",
+      "questions": {
+        "q1": {
+          "prompt": "我的體型很大，全身灰色。我有一條長長的鼻子。",
+          "choices": { "q1-hippo": "河馬", "q1-elephant": "大象", "q1-rhino": "犀牛", "q1-bear": "棕熊" }
+        },
+        "q2": {
+          "prompt": "我長得像馬，但是身上有黑白相間的條紋。",
+          "choices": { "q2-horse": "馬", "q2-panda": "貓熊", "q2-zebra": "斑馬", "q2-penguin": "企鵝" }
+        },
+        "q3": {
+          "prompt": "我是世界上最高的動物，我的脖子非常長。",
+          "choices": { "q3-camel": "駱駝", "q3-ostrich": "鴕鳥", "q3-giraffe": "長頸鹿" }
+        },
+        "q4": {
+          "prompt": "我是一種大型的貓科動物，橘色的毛上有黑色的條紋。",
+          "choices": {
+            "q4-lion": "獅子",
+            "q4-tiger": "老虎",
+            "q4-leopard": "花豹",
+            "q4-cheetah": "獵豹",
+            "q4-zebra": "斑馬",
+            "q4-fox": "狐狸"
+          }
+        },
+        "q5": {
+          "prompt": "我住在河裡，有長長的嘴巴和很多尖尖的牙齒。",
+          "choices": {
+            "q5-hippo": "河馬",
+            "q5-turtle": "烏龜",
+            "q5-frog": "青蛙",
+            "q5-crocodile": "鱷魚",
+            "q5-snake": "蛇"
+          }
+        }
+      }
+    }
+  }
 }

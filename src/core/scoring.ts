@@ -22,12 +22,15 @@ export interface LeaderboardEntry {
 export type RankedOptions = Pick<GameOptions, 'difficulty' | 'lives' | 'timerMode' | 'countDownSeconds'>;
 
 /**
- * 設定代號，例如 "d3-l3-countUp"、"d5-l1-countDown-300"。
+ * 設定代號，例如 "d3-l3-countUp"、"d2-l1-countDown-300"。
  * 秒數只在倒數時有意義，其他計時方式不放進去，改了也不會把排行榜拆開。
+ * 玩的是翻譯版本時，最後再加上語言代碼，例如 "d2-l3-countUp-zh-Hant"（translation 是 null 表示玩的是原文）；
+ * 原文不加，加入語言選項之前存的紀錄照樣對得上。
  */
-export function optionsKey(options: RankedOptions): string {
+export function optionsKey(options: RankedOptions, translation: string | null = null): string {
   const base = `d${options.difficulty}-l${options.lives}-${options.timerMode}`;
-  return options.timerMode === 'countDown' ? `${base}-${options.countDownSeconds}` : base;
+  const timed = options.timerMode === 'countDown' ? `${base}-${options.countDownSeconds}` : base;
+  return translation === null ? timed : `${timed}-${translation}`;
 }
 
 /**

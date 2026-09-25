@@ -1,4 +1,4 @@
-import type { ImageAsset, QuizFile } from '../core/quiz';
+import { DIFFICULTIES, type Difficulty, type ImageAsset, type QuizFile, type QuizLanguage } from '../core/quiz';
 import { DPAD_SIDES, type DpadSide } from '../storage/preferences';
 import { button, el } from './dom';
 import { formatBuildTime } from './format';
@@ -48,6 +48,13 @@ export interface TitleHandlers {
   readonly onStart: () => void;
   readonly onLeaderboard: () => void;
   readonly onCredits: () => void;
+  /** 題組有的語言；只有一種時不顯示語言選項 */
+  readonly languages: readonly QuizLanguage[];
+  readonly language: string;
+  /** 換語言：回傳換好語言的題組，標題畫面上的題組名稱跟著換 */
+  readonly onLanguageChange: (locale: string) => QuizFile;
+  readonly difficulty: Difficulty;
+  readonly onDifficultyChange: (difficulty: Difficulty) => void;
   /** 目前的方向鍵位置與改變時的處理 */
   readonly dpadSide: DpadSide;
   readonly onDpadSideChange: (side: DpadSide) => void;
@@ -55,8 +62,41 @@ export interface TitleHandlers {
 
 export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHandlers): void {
   const startButton = button(STRINGS.start, handlers.onStart, 'primary');
+  const title = el('h1', { className: 'quiz-text title', text: quiz.title, attrs: { lang: quiz.locale } });
+  const onLanguageChange = (locale: string): void => {
+    const localized = handlers.onLanguageChange(locale);
+    title.textContent = localized.title;
+    title.lang = localized.locale;
+  };
+
+  const settings = [
+    ...(handlers.languages.length > 1
+      ? settingRow(
+          'language',
+          STRINGS.languageSetting,
+          handlers.languages.map(({ locale, name }) => ({ value: locale, label: name, lang: locale })),
+          handlers.language,
+          onLanguageChange,
+        )
+      : []),
+    ...settingRow(
+      'difficulty',
+      STRINGS.difficultySetting,
+      DIFFICULTIES.map((level) => ({ value: level, label: String(level) })),
+      handlers.difficulty,
+      handlers.onDifficultyChange,
+    ),
+    ...settingRow(
+      'dpad',
+      STRINGS.dpadSetting,
+      DPAD_SIDES.map((side) => ({ value: side, label: STRINGS.dpadSides[side] })),
+      handlers.dpadSide,
+      handlers.onDpadSideChange,
+    ),
+  ];
+
   showCard(root, [
-    el('h1', { className: 'quiz-text title', text: quiz.title, attrs: { lang: quiz.locale } }),
+    title,
     el('p', { className: 'muted', text: STRINGS.questionCount(quiz.questions.length) }),
     el('div', {
       className: 'actions',
@@ -66,27 +106,45 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
         button(STRINGS.credits, handlers.onCredits),
       ],
     }),
-    dpadSetting(handlers.dpadSide, handlers.onDpadSideChange),
+    el('div', { className: 'settings', children: settings }),
     // 建置時間：試玩時確認裝置拿到的是新版
     el('p', { className: 'build-info', text: STRINGS.buildInfo(formatBuildTime(import.meta.env.VITE_BUILD_TIME)) }),
   ]);
   startButton.focus();
 }
 
-/** 方向鍵放右邊、左邊或不顯示：三個並排的單選選項 */
-function dpadSetting(current: DpadSide, onChange: (side: DpadSide) => void): HTMLFieldSetElement {
-  const options = DPAD_SIDES.map((side) => {
-    const input = el('input', { attrs: { type: 'radio', name: 'dpad-side', value: side } });
-    input.checked = side === current;
+/** 設定的一個選項；lang 是選項文字本身的語言（例如語言選單上的 "English"） */
+interface SettingOption<T> {
+  readonly value: T;
+  readonly label: string;
+  readonly lang?: string;
+}
+
+/**
+ * 標題畫面的一項設定：左邊是名稱，右邊是幾個並排的單選選項。
+ * 回傳兩個元素，放進 .settings 的兩欄表格裡；選項群組用 aria-labelledby 指向名稱。
+ */
+function settingRow<T extends string | number>(
+  id: string,
+  label: string,
+  options: readonly SettingOption<T>[],
+  current: T,
+  onChange: (value: T) => void,
+): HTMLElement[] {
+  const labelId = `setting-${id}`;
+  const choices = options.map((option) => {
+    const input = el('input', { attrs: { type: 'radio', name: labelId, value: String(option.value) } });
+    input.checked = option.value === current;
     input.addEventListener('change', () => {
-      if (input.checked) onChange(side);
+      if (input.checked) onChange(option.value);
     });
-    return el('label', { children: [input, el('span', { text: STRINGS.dpadSides[side] })] });
+    const text = el('span', { text: option.label, attrs: option.lang === undefined ? {} : { lang: option.lang } });
+    return el('label', { children: [input, text] });
   });
-  return el('fieldset', {
-    className: 'setting',
-    children: [el('legend', { text: STRINGS.dpadSetting }), el('div', { className: 'segmented', children: options })],
-  });
+  return [
+    el('span', { className: 'setting-label', text: label, attrs: { id: labelId } }),
+    el('div', { className: 'segmented', attrs: { role: 'radiogroup', 'aria-labelledby': labelId }, children: choices }),
+  ];
 }
 
 /** 沒有命了、時間到（§5.1）：疊在遊戲畫面上，按「看成績」進入結算 */

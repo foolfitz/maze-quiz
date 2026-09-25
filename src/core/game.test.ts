@@ -31,7 +31,7 @@ const releaseDelayMs = DEFAULT_GAME_CONFIG.enemy.releaseDelayMs;
 /** 判定相關的測試不放敵人，免得玩家在測試途中被撞到 */
 const NO_ENEMIES: GameConfig = {
   ...DEFAULT_GAME_CONFIG,
-  difficulties: { 1: noEnemy(1), 2: noEnemy(2), 3: noEnemy(3), 4: noEnemy(4), 5: noEnemy(5) },
+  difficulties: { 1: noEnemy(1), 2: noEnemy(2), 3: noEnemy(3) },
 };
 
 function noEnemy(difficulty: Difficulty) {
@@ -303,20 +303,32 @@ function hitByEnemy(state: GameState): void {
 }
 
 describe('敵人（§9）', () => {
-  it.each([
-    [1, ['chaser']],
-    [3, ['chaser', 'wanderer']],
-    [5, ['chaser', 'wanderer', 'ambusher']],
-  ] as const)('難度 %i 的敵人：%j', (difficulty, kinds) => {
+  it.each([1, 2, 3] as const)('難度 %i 都是兩隻敵人：chaser 與 wanderer', (difficulty) => {
     const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, difficulty });
     const level = currentLevel(state);
-    expect(level.enemies.map((e) => e.kind)).toEqual(kinds);
+    expect(level.enemies.map((e) => e.kind)).toEqual(['chaser', 'wanderer']);
     level.enemies.forEach((enemy, i) => expect(enemy.spawn).toEqual(levelMaze(level).enemySpawns[i]));
   });
 
-  it('同一個種子在不同難度下是同一張迷宮', () => {
-    const easy = startPlaying(3, DEFAULT_GAME_CONFIG, { ...options, difficulty: 1 });
-    const hard = startPlaying(3, DEFAULT_GAME_CONFIG, { ...options, difficulty: 5 });
+  it('三種行為依序分配給第 1、2、3 隻（難度表放三隻時）', () => {
+    const three: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      maze: { ...DEFAULT_GAME_CONFIG.maze, spawnCount: 3 },
+      difficulties: { ...DEFAULT_GAME_CONFIG.difficulties, 1: { ...DEFAULT_GAME_CONFIG.difficulties[1], enemyCount: 3 } },
+    };
+    const state = startPlaying(1, three, { ...options, difficulty: 1 });
+    expect(currentLevel(state).enemies.map((e) => e.kind)).toEqual(['chaser', 'wanderer', 'ambusher']);
+  });
+
+  it('同一個種子在不同難度下是同一張迷宮（敵人數量不同也一樣）', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      difficulties: { ...DEFAULT_GAME_CONFIG.difficulties, 1: { ...DEFAULT_GAME_CONFIG.difficulties[1], enemyCount: 1 } },
+    };
+    const easy = startPlaying(3, config, { ...options, difficulty: 1 });
+    const hard = startPlaying(3, config, { ...options, difficulty: 3 });
+    expect(currentLevel(easy).enemies).toHaveLength(1);
+    expect(currentLevel(hard).enemies).toHaveLength(2);
     expect(levelMaze(currentLevel(easy)).grid).toEqual(levelMaze(currentLevel(hard)).grid);
   });
 
@@ -334,7 +346,7 @@ describe('敵人（§9）', () => {
   });
 
   it('速度是玩家速度乘上難度的 enemySpeedRatio', () => {
-    for (const difficulty of [1, 5] as const) {
+    for (const difficulty of [1, 2, 3] as const) {
       const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, difficulty });
       run(state, releaseDelayMs);
       const enemy = firstEnemy(state);

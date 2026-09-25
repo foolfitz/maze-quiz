@@ -29,7 +29,7 @@ describe('parseUrlParams', () => {
     expect(parse(`?quiz=${encodeURIComponent(value)}`).ok).toBe(false);
   });
 
-  it.each([1, 2, 3, 4, 5])('讀取 difficulty=%i', (difficulty) => {
+  it.each([1, 2, 3])('讀取 difficulty=%i', (difficulty) => {
     const result = parse(`?difficulty=${difficulty}`);
     expect(result.ok && result.params.overrides).toEqual({ difficulty });
   });
@@ -39,7 +39,7 @@ describe('parseUrlParams', () => {
     expect(result.ok && result.params.overrides).toEqual({});
   });
 
-  it.each(['0', '6', '2.5', 'hard'])('拒絕不合法的 difficulty：%j', (value) => {
+  it.each(['0', '4', '5', '2.5', 'hard'])('拒絕不合法的 difficulty：%j', (value) => {
     const result = parse(`?difficulty=${value}`);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]).toContain(value);

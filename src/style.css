@@ -719,21 +719,42 @@ progress {
   color: var(--on-hedge);
 }
 
-/* 標題畫面的方向鍵設定：三個選項並排，每個至少 44 px 高 */
-.setting {
-  margin: 1.5rem 0 0;
-  padding: 0;
-  border: 0;
+/* 標題畫面的設定（語言、難度、觸控方向鍵）：左欄是名稱，右欄是並排的選項，每個至少 44 px 高 */
+.settings {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 1.5rem;
 }
 
-.setting legend {
-  margin: 0 auto 0.5rem;
+.setting-label {
   color: var(--muted);
+  text-align: right;
 }
 
 .segmented {
   display: flex;
-  justify-content: center;
+}
+
+/* 窄螢幕（例如手機直向）放不下兩欄：名稱放在選項上面 */
+@media (max-width: 30rem) {
+  .settings {
+    grid-template-columns: auto;
+    justify-items: center;
+    row-gap: 4px;
+  }
+
+  .setting-label {
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  /* 320 px 寬的手機上，三個選項也放得進卡片（這段寫在 .segmented span 前面，要多一層選擇器才蓋得過） */
+  .settings .segmented span {
+    min-width: 4.5rem;
+  }
 }
 
 .segmented label {

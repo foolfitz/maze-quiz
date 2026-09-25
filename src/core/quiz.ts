@@ -8,6 +8,10 @@ export interface QuizFile {
   readonly id: string; // 題組代號，也用於排行榜的儲存 key
   readonly title: string; // 顯示在標題畫面
   readonly locale: string; // 題目內容的語言（BCP 47），例如 "en"
+  /** 語言選單上顯示的名稱，例如 "English"；有 translations 時必填 */
+  readonly languageName?: string;
+  /** 其他語言的版本，key 是語言代碼（BCP 47），例如 "zh-Hant"。題目、選項、對錯與圖片都相同，只換文字 */
+  readonly translations?: Readonly<Record<string, QuizTranslation>>;
   readonly options?: Partial<GameOptions>;
   readonly images: Readonly<Record<string, ImageAsset>>;
   readonly questions: readonly Question[];
@@ -25,6 +29,20 @@ export interface Choice {
   readonly text: string;
   readonly image?: string; // 選填：images 的 key
   readonly correct: boolean; // 一題可以有多個正確選項
+}
+
+/** 同一組題目的另一個語言版本 */
+export interface QuizTranslation {
+  readonly languageName: string; // 語言選單上顯示的名稱，例如 "中文"
+  readonly title: string;
+  /** key 是題目 id；每一題都要有 */
+  readonly questions: Readonly<Record<string, QuestionTranslation>>;
+}
+
+export interface QuestionTranslation {
+  readonly prompt: string;
+  /** key 是選項 id，值是選項文字；每個選項都要有 */
+  readonly choices: Readonly<Record<string, string>>;
 }
 
 export interface ImageAsset {
@@ -45,14 +63,15 @@ export interface ImageCredit {
 export const TIMER_MODES = ['none', 'countUp', 'countDown'] as const;
 export type TimerMode = (typeof TIMER_MODES)[number]; // 'none' | 'countUp' | 'countDown'
 
-export const DIFFICULTIES = [1, 2, 3, 4, 5] as const;
-export type Difficulty = (typeof DIFFICULTIES)[number]; // 1 | 2 | 3 | 4 | 5
+// 使用者 2026-09-25 改成三級（§4.1 原本是 1–5）
+export const DIFFICULTIES = [1, 2, 3] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number]; // 1 | 2 | 3
 
 export interface GameOptions {
   readonly timerMode: TimerMode; // 預設 'countUp'
   readonly countDownSeconds: number; // 預設 300，只在 countDown 使用
   readonly lives: number; // 預設 3，範圍 1–9
-  readonly difficulty: Difficulty; // 預設 3
+  readonly difficulty: Difficulty; // 預設 2
   readonly shuffleQuestions: boolean; // 預設 true
   readonly showAnswersAtEnd: boolean; // 預設 true
 }
@@ -84,6 +103,70 @@ export function resolveOptions(overrides: Partial<GameOptions> | undefined): Gam
     shuffleQuestions: overrides?.shuffleQuestions ?? DEFAULT_GAME_OPTIONS.shuffleQuestions,
     showAnswersAtEnd: overrides?.showAnswersAtEnd ?? DEFAULT_GAME_OPTIONS.showAnswersAtEnd,
   };
+}
+
+// ─── 語言版本 ───────────────────────────────────────────────
+
+/** 語言選單的一個選項 */
+export interface QuizLanguage {
+  readonly locale: string;
+  readonly name: string;
+}
+
+/** 題組有哪些語言：原文排第一個，再來是 translations 的順序 */
+export function quizLanguages(quiz: QuizFile): readonly QuizLanguage[] {
+  const original: QuizLanguage = { locale: quiz.locale, name: quiz.languageName ?? quiz.locale };
+  const translated = Object.entries(quiz.translations ?? {}).map(([locale, t]) => ({ locale, name: t.languageName }));
+  return [original, ...translated];
+}
+
+/**
+ * 換成指定語言的題組：題目、選項、對錯與圖片都不變，只換標題、題目與選項的文字。
+ * 回傳的仍然是 QuizFile，遊戲其他部分不必知道有翻譯這回事。
+ * 是原文或找不到這個語言時，直接回傳原本的題組。
+ */
+export function localizeQuiz(quiz: QuizFile, locale: string): QuizFile {
+  const translation = locale === quiz.locale ? undefined : own(quiz.translations ?? {}, locale);
+  if (translation === undefined) return quiz;
+  return {
+    schemaVersion: quiz.schemaVersion,
+    id: quiz.id, // 同一組題目：排行榜也存在同一個 key 底下（用 optionsKey 區分語言）
+    title: translation.title,
+    locale,
+    languageName: translation.languageName,
+    ...(quiz.options === undefined ? {} : { options: quiz.options }),
+    images: quiz.images,
+    questions: quiz.questions.map((question) => {
+      // 驗證過的題組每一題、每個選項都有翻譯；萬一缺了就沿用原文
+      const q = own(translation.questions, question.id);
+      return {
+        ...question,
+        prompt: q?.prompt ?? question.prompt,
+        choices: question.choices.map((choice) => ({
+          ...choice,
+          text: (q === undefined ? undefined : own(q.choices, choice.id)) ?? choice.text,
+        })),
+      };
+    }),
+  };
+}
+
+/**
+ * 只讀物件自己的屬性。翻譯以題目與選項的 id 當 key，id 可能剛好是 toString、constructor 之類
+ * Object.prototype 上的名字；直接用 record[key] 會讀到繼承來的函式，誤以為有翻譯。
+ * （Object.hasOwn 要 Safari 15.4，所以用 hasOwnProperty.call）
+ */
+function own<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
+/** BCP 47 語言代碼的標準寫法（例如 "zh-hant" → "zh-Hant"）；不是合法的代碼時回傳 null */
+function canonicalLocale(locale: string): string | null {
+  try {
+    return Intl.getCanonicalLocales(locale)[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── 驗證（§4.2）────────────────────────────────────────────
@@ -216,11 +299,20 @@ function parseQuizFile(raw: unknown, issues: Issues): QuizFile | undefined {
   const imageKeys = new Set(isRecord(raw['images']) ? Object.keys(raw['images']) : []);
   const questions = parseQuestions(raw['questions'], imageKeys, issues);
 
+  // 有其他語言時，原文也要寫出語言名稱，選單上才有東西可以顯示
+  const hasTranslations = raw['translations'] !== undefined;
+  const languageName = hasTranslations || raw['languageName'] !== undefined
+    ? readString(raw, 'languageName', '', issues)
+    : null;
+  const translations = parseTranslations(raw['translations'], locale, questions, issues);
+
   if (
     schemaVersion !== 1 ||
     id === undefined ||
     title === undefined ||
     locale === undefined ||
+    languageName === undefined ||
+    translations === undefined ||
     options === undefined ||
     images === undefined ||
     questions === undefined
@@ -233,11 +325,161 @@ function parseQuizFile(raw: unknown, issues: Issues): QuizFile | undefined {
     id,
     title,
     locale,
-    // 題組沒寫 options 時，回傳的物件也不帶這個 key
+    // 選填欄位：題組沒寫的話，回傳的物件也不帶這個 key
+    ...(languageName === null ? {} : { languageName }),
+    ...(translations === null ? {} : { translations }),
     ...(options === null ? {} : { options }),
     images,
     questions,
   };
+}
+
+/**
+ * 其他語言的版本。每一題、每個選項都要有翻譯，也不能多出題組裡沒有的 id。
+ * 題目本身有錯（questions 是 undefined）時只檢查翻譯的格式，先不和題目比對。
+ * 回傳 null 表示題組沒有寫 translations；undefined 表示有錯。
+ */
+function parseTranslations(
+  raw: unknown,
+  baseLocale: string | undefined,
+  questions: readonly Question[] | undefined,
+  issues: Issues,
+): Record<string, QuizTranslation> | null | undefined {
+  if (raw === undefined) return null;
+  if (!isRecord(raw)) {
+    issues.error('translations', `必須是物件（{ "語言代碼": { … } }），目前是 ${describe(raw)}`);
+    return undefined;
+  }
+  // 用 Object.fromEntries 組出結果：key 就算是 "__proto__" 也是一般的屬性，不會改到原型
+  const entries: [string, QuizTranslation][] = [];
+  let valid = true;
+  for (const [locale, value] of Object.entries(raw)) {
+    const path = `translations.${locale}`;
+    const canonical = canonicalLocale(locale);
+    if (canonical === null) {
+      issues.error(path, '不是合法的語言代碼（BCP 47），例如 "zh-Hant"、"ja"');
+      valid = false;
+      continue;
+    }
+    if (canonical === canonicalLocale(baseLocale ?? '')) {
+      issues.error(path, `和題組原文的 locale（${JSON.stringify(baseLocale)}）是同一個語言`);
+      valid = false;
+      continue;
+    }
+    const translation = parseTranslation(value, path, questions, issues);
+    if (translation === undefined) valid = false;
+    else entries.push([locale, translation]);
+  }
+  return valid ? Object.fromEntries(entries) : undefined;
+}
+
+function parseTranslation(
+  raw: unknown,
+  path: string,
+  questions: readonly Question[] | undefined,
+  issues: Issues,
+): QuizTranslation | undefined {
+  if (!isRecord(raw)) {
+    issues.error(path, `必須是物件（{ "languageName": …, "title": …, "questions": { … } }），目前是 ${describe(raw)}`);
+    return undefined;
+  }
+  const languageName = readString(raw, 'languageName', path, issues);
+  const title = readString(raw, 'title', path, issues);
+  const questionsPath = `${path}.questions`;
+  const rawQuestions = raw['questions'];
+  if (!isRecord(rawQuestions)) {
+    issues.error(questionsPath, `必須是物件（{ "題目 id": { … } }），目前是 ${describe(rawQuestions)}`);
+    return undefined;
+  }
+
+  let valid = true;
+  const translated: [string, QuestionTranslation][] = [];
+  for (const [questionId, value] of Object.entries(rawQuestions)) {
+    const question = questions?.find((q) => q.id === questionId);
+    if (questions !== undefined && question === undefined) {
+      issues.error(`${questionsPath}.${questionId}`, '題組裡沒有這個題目 id（拼錯了嗎？）');
+      valid = false;
+      continue;
+    }
+    const parsed = parseQuestionTranslation(value, `${questionsPath}.${questionId}`, question, issues);
+    if (parsed === undefined) valid = false;
+    else translated.push([questionId, parsed]);
+  }
+  for (const question of questions ?? []) {
+    if (own(rawQuestions, question.id) === undefined) {
+      issues.error(questionsPath, `缺少題目 ${JSON.stringify(question.id)} 的翻譯`);
+      valid = false;
+    }
+  }
+
+  if (!valid || languageName === undefined || title === undefined) return undefined;
+  return { languageName, title, questions: Object.fromEntries(translated) };
+}
+
+/** question 是 undefined 時（題目本身有錯）只檢查格式 */
+function parseQuestionTranslation(
+  raw: unknown,
+  path: string,
+  question: Question | undefined,
+  issues: Issues,
+): QuestionTranslation | undefined {
+  if (!isRecord(raw)) {
+    issues.error(path, `必須是物件（{ "prompt": …, "choices": { … } }），目前是 ${describe(raw)}`);
+    return undefined;
+  }
+  const prompt = readString(raw, 'prompt', path, issues);
+  if (prompt !== undefined) warnLongPrompt(prompt, `${path}.prompt`, issues);
+
+  const choicesPath = `${path}.choices`;
+  const rawChoices = raw['choices'];
+  if (!isRecord(rawChoices)) {
+    issues.error(choicesPath, `必須是物件（{ "選項 id": "文字" }），目前是 ${describe(rawChoices)}`);
+    return undefined;
+  }
+
+  let valid = true;
+  const choices: [string, string][] = [];
+  for (const choiceId of Object.keys(rawChoices)) {
+    const choice = question?.choices.find((c) => c.id === choiceId);
+    if (question !== undefined && choice === undefined) {
+      issues.error(`${choicesPath}.${choiceId}`, '這一題沒有這個選項 id（拼錯了嗎？）');
+      valid = false;
+      continue;
+    }
+    // 和原文一樣：有圖片的選項可以不寫字，沒有圖片時一定要有文字；
+    // 原文的題目有錯（question 是 undefined）時不知道有沒有圖片，先不檢查是不是空的
+    const allowEmpty = question === undefined || choice?.image !== undefined;
+    const text = readString(rawChoices, choiceId, choicesPath, issues, allowEmpty);
+    if (text === undefined) valid = false;
+    else {
+      warnLongChoiceText(text, `${choicesPath}.${choiceId}`, issues);
+      choices.push([choiceId, text]);
+    }
+  }
+  for (const choice of question?.choices ?? []) {
+    if (own(rawChoices, choice.id) === undefined) {
+      issues.error(choicesPath, `缺少選項 ${JSON.stringify(choice.id)} 的翻譯`);
+      valid = false;
+    }
+  }
+
+  if (!valid || prompt === undefined) return undefined;
+  return { prompt, choices: Object.fromEntries(choices) };
+}
+
+function warnLongPrompt(prompt: string, path: string, issues: Issues): void {
+  if (charCount(prompt) > QUIZ_LIMITS.maxPromptLength) {
+    issues.warn(path, `題目有 ${charCount(prompt)} 個字元，超過 ${QUIZ_LIMITS.maxPromptLength} 個可能在題目列放不下`);
+  }
+}
+
+function warnLongChoiceText(text: string, path: string, issues: Issues): void {
+  if (charCount(text) > QUIZ_LIMITS.maxChoiceTextLength) {
+    issues.warn(
+      path,
+      `選項文字有 ${charCount(text)} 個字元，超過 ${QUIZ_LIMITS.maxChoiceTextLength} 個可能在答案區裡放不下`,
+    );
+  }
 }
 
 /** 去掉 readonly 的工具型別，用來一欄一欄組出物件 */
@@ -443,12 +685,7 @@ function parseQuestion(
   }
   const id = readString(raw, 'id', path, issues);
   const prompt = readString(raw, 'prompt', path, issues);
-  if (prompt !== undefined && charCount(prompt) > QUIZ_LIMITS.maxPromptLength) {
-    issues.warn(
-      `${path}.prompt`,
-      `題目有 ${charCount(prompt)} 個字元，超過 ${QUIZ_LIMITS.maxPromptLength} 個可能在題目列放不下`,
-    );
-  }
+  if (prompt !== undefined) warnLongPrompt(prompt, `${path}.prompt`, issues);
   const imageRef = readImageRef(raw, path, imageKeys, issues);
   const choices = parseChoices(raw['choices'], `${path}.choices`, imageKeys, issues);
 
@@ -527,12 +764,7 @@ function parseChoice(
   // 有圖片的選項可以只放圖、不寫字；沒有圖片時一定要有文字
   const hasImage = raw['image'] !== undefined;
   const text = readString(raw, 'text', path, issues, hasImage);
-  if (text !== undefined && charCount(text) > QUIZ_LIMITS.maxChoiceTextLength) {
-    issues.warn(
-      `${path}.text`,
-      `選項文字有 ${charCount(text)} 個字元，超過 ${QUIZ_LIMITS.maxChoiceTextLength} 個可能在答案區裡放不下`,
-    );
-  }
+  if (text !== undefined) warnLongChoiceText(text, `${path}.text`, issues);
 
   const correct = raw['correct'];
   if (typeof correct !== 'boolean') {

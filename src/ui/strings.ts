@@ -16,6 +16,8 @@ export const STRINGS = {
   leaderboard: '排行榜',
   credits: '圖片來源',
   questionCount: (count: number) => `共 ${count} 題`,
+  languageSetting: '語言',
+  difficultySetting: '難度',
   dpadSetting: '觸控方向鍵',
   dpadSides: { right: '右邊', left: '左邊', off: '不顯示' },
   buildInfo: (time: string) => `版本 ${time}`,
@@ -64,7 +66,8 @@ export const STRINGS = {
   // 排行榜（§11.2）
   leaderboardTitle: '排行榜',
   leaderboardSettings: (settings: string) => `目前設定：${settings}`,
-  settingsSummary: (difficulty: number, lives: number, timer: string) => `難度 ${difficulty}、${lives} 條命、${timer}`,
+  settingsSummary: (difficulty: number, lives: number, timer: string, language: string | null) =>
+    `難度 ${difficulty}、${lives} 條命、${timer}${language === null ? '' : `、${language}`}`,
   timerModes: { none: '不計時', countUp: '正計時', countDown: (time: string) => `倒數 ${time}` },
   leaderboardEmpty: '還沒有紀錄，快來當第一名！',
   leaderboardUnavailable:
@@ -84,7 +87,7 @@ export const STRINGS = {
   invalidQuizParam: (value: string) =>
     `網址參數 quiz 的值「${value}」不正確：只能使用英文字母、數字、- 和 _。`,
   invalidDifficultyParam: (value: string) =>
-    `網址參數 difficulty 的值「${value}」不正確：只能是 1 到 5 的整數（1 最簡單）。`,
+    `網址參數 difficulty 的值「${value}」不正確：只能是 1 到 3 的整數（1 最簡單）。`,
   invalidTimerParam: (value: string) =>
     `網址參數 timer 的值「${value}」不正確：只能是 none（不計時）、countUp（正計時）或 countDown（倒數）。`,
   invalidLivesParam: (value: string) => `網址參數 lives 的值「${value}」不正確：只能是 1 到 9 的整數。`,
