@@ -6,7 +6,7 @@ export default defineConfig({
   // 不做 SPA fallback：找不到的檔案回 404，而不是回傳 index.html
   appType: 'mpa',
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
   },
 });

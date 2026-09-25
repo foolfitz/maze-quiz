@@ -6,6 +6,8 @@ import type { Theme } from './theme';
 /** 答案區裡要顯示的內容，順序與 maze.zones 相同 */
 export interface ZoneLabel {
   readonly text: string;
+  /** 已經載入的選項圖片；沒有圖片或載入失敗時是 null，只顯示文字 */
+  readonly image: HTMLImageElement | null;
 }
 
 /** 除錯覆蓋層要畫在迷宮上的資訊（§12.6） */
@@ -184,7 +186,7 @@ export class Renderer {
 
     scene.maze.zones.forEach((zone, i) => {
       const sealed = scene.sealed[i] ?? false;
-      this.drawZoneCard(ctx, zone.rect, scene.labels[i]?.text ?? '', sealed);
+      this.drawZoneCard(ctx, zone.rect, scene.labels[i] ?? { text: '', image: null }, sealed);
       if (sealed) this.drawClosedGate(ctx, zone.door, zone.doorSide);
     });
 
@@ -196,7 +198,7 @@ export class Renderer {
     return { x: (tile.x + 0.5) * this.tileSize, y: (tile.y + 0.5) * this.tileSize };
   }
 
-  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, text: string, sealed: boolean): void {
+  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, label: ZoneLabel, sealed: boolean): void {
     const { theme } = this;
     const s = this.tileSize;
     const pad = s * 0.12;
@@ -212,13 +214,25 @@ export class Renderer {
     ctx.strokeStyle = theme.cardEdge;
     ctx.stroke();
 
-    // 沒有圖片時只顯示文字，字級放大；放不下就縮小，最小 12 px
-    const fitted = this.fitText(ctx, text, w - pad * 2, s * 0.8, 'bold');
     ctx.fillStyle = theme.ink;
-    ctx.font = fitted.font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(fitted.text, x + w / 2, y + h / 2);
+    if (label.image === null) {
+      // 沒有圖片時只顯示文字，字級放大；放不下就縮小，最小 12 px（§8）
+      const fitted = this.fitText(ctx, label.text, w - pad * 2, s * 0.8, 'bold');
+      ctx.font = fitted.font;
+      ctx.fillText(fitted.text, x + w / 2, y + h / 2);
+    } else {
+      // 有圖片：圖片在上、文字在下。圖片等比縮放、不裁切，放進剩下的空間
+      const textHeight = label.text === '' ? 0 : Math.max(MIN_LABEL_FONT_PX, s * 0.42) * 1.25;
+      const box = { x: x + pad, y: y + pad, width: w - pad * 2, height: h - pad * 2 - textHeight };
+      drawContained(ctx, label.image, box);
+      if (label.text !== '') {
+        const fitted = this.fitText(ctx, label.text, w - pad * 2, s * 0.42, 'bold');
+        ctx.font = fitted.font;
+        ctx.fillText(fitted.text, x + w / 2, y + h - pad - textHeight / 2);
+      }
+    }
 
     // 答錯封住的園區：變暗並保留 ✗（§8）；✗ 放在角落，選項文字仍看得到
     if (sealed) {
@@ -421,6 +435,17 @@ export class Renderer {
     draw();
     ctx.restore();
   }
+}
+
+/** 把圖片等比縮放後置中放進 box，不裁切 */
+function drawContained(ctx: CanvasRenderingContext2D, image: HTMLImageElement, box: Rect): void {
+  const scale = Math.min(box.width / image.naturalWidth, box.height / image.naturalHeight);
+  if (!Number.isFinite(scale) || scale <= 0) return;
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, box.x + (box.width - width) / 2, box.y + (box.height - height) / 2, width, height);
 }
 
 /**

@@ -22,6 +22,13 @@ export const STRINGS = {
   questionNumber: (current: number, total: number) => `第 ${current} / ${total} 題`,
   ready: '預備',
 
+  // 圖片來源畫面（§13.4）
+  creditsIntro: '照片依照各自的授權使用，並經過縮小與轉檔。點作品名稱可以看原始檔案與完整說明。',
+  creditAuthor: (author: string) => `作者：${author}`,
+  creditLicense: '授權：',
+  creditMissing: '尚未補上授權資訊',
+  back: '返回',
+
   // 結算畫面（§11.1）
   resultsTitle: '成績',
   firstTryScore: (score: number, total: number) => `一次答對 ${score} / ${total} 題`,

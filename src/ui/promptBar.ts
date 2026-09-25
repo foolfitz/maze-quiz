@@ -7,10 +7,22 @@ const MAX_LINES = 2;
 /**
  * 顯示題目文字：先用最大字級，超過兩行就逐步縮小。
  * 縮到最小字級還放不下時就讓它換成第三行，寧可多一行也不要截掉題目。
+ * 題目有圖片時，圖片放在文字左側（§12.1）；沒有圖片或載入失敗就隱藏。
  */
-export function showPrompt(element: HTMLElement, text: string, lang: string): void {
+export function showPrompt(
+  element: HTMLElement,
+  imageElement: HTMLImageElement,
+  text: string,
+  lang: string,
+  image: HTMLImageElement | null,
+): void {
   element.textContent = text;
   element.lang = lang;
+  imageElement.hidden = image === null;
+  if (image !== null) {
+    imageElement.src = image.src;
+    imageElement.alt = image.alt;
+  }
   fitPrompt(element);
 }
 

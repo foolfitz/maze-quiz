@@ -3,49 +3,247 @@
   "id": "zoo-animals",
   "title": "Zoo Animals",
   "locale": "en",
-  "options": {
-    "shuffleQuestions": false
-  },
+  "options": { "shuffleQuestions": false },
   "images": {
-    "elephant":  { "src": "images/elephant.webp",  "alt": "An elephant",   "credit": null },
-    "hippo":     { "src": "images/hippo.webp",     "alt": "A hippo",       "credit": null },
-    "rhino":     { "src": "images/rhino.webp",     "alt": "A rhino",       "credit": null },
-    "bear":      { "src": "images/bear.webp",      "alt": "A brown bear",  "credit": null },
-    "zebra":     { "src": "images/zebra.webp",     "alt": "A zebra",       "credit": null },
-    "horse":     { "src": "images/horse.webp",     "alt": "A horse",       "credit": null },
-    "panda":     { "src": "images/panda.webp",     "alt": "A giant panda", "credit": null },
-    "penguin":   { "src": "images/penguin.webp",   "alt": "A penguin",     "credit": null },
-    "giraffe":   { "src": "images/giraffe.webp",   "alt": "A giraffe",     "credit": null },
-    "camel":     { "src": "images/camel.webp",     "alt": "A camel",       "credit": null },
-    "ostrich":   { "src": "images/ostrich.webp",   "alt": "An ostrich",    "credit": null },
-    "tiger":     { "src": "images/tiger.webp",     "alt": "A tiger",       "credit": null },
-    "lion":      { "src": "images/lion.webp",      "alt": "A lion",        "credit": null },
-    "leopard":   { "src": "images/leopard.webp",   "alt": "A leopard",     "credit": null },
-    "cheetah":   { "src": "images/cheetah.webp",   "alt": "A cheetah",     "credit": null },
-    "fox":       { "src": "images/fox.webp",       "alt": "A red fox",     "credit": null },
-    "crocodile": { "src": "images/crocodile.webp", "alt": "A crocodile",   "credit": null },
-    "turtle":    { "src": "images/turtle.webp",    "alt": "A turtle",      "credit": null },
-    "frog":      { "src": "images/frog.webp",      "alt": "A frog",        "credit": null },
-    "snake":     { "src": "images/snake.webp",     "alt": "A snake",       "credit": null }
+    "elephant": {
+      "src": "images/elephant.webp",
+      "alt": "An African elephant walking on dry grass, seen from the side",
+      "credit": {
+        "title": "178 Male African bush elephant in Etosha National Park Photo by Giles Laurent.jpg",
+        "author": "Giles Laurent",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:178_Male_African_bush_elephant_in_Etosha_National_Park_Photo_by_Giles_Laurent.jpg"
+      }
+    },
+    "hippo": {
+      "src": "images/hippo.webp",
+      "alt": "A hippo standing on dry ground with its head down",
+      "credit": {
+        "title": "Hipopótamo (Hippopotamus amphibius), parque nacional de Chobe, Botsuana, 2018-07-28, DD 82.jpg",
+        "author": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hipop%C3%B3tamo_(Hippopotamus_amphibius),_parque_nacional_de_Chobe,_Botsuana,_2018-07-28,_DD_82.jpg"
+      }
+    },
+    "rhino": {
+      "src": "images/rhino.webp",
+      "alt": "A white rhino with two horns standing in dry grass",
+      "credit": {
+        "title": "081 White rhinoceros (male) in the Kalahari Desert of Namibia Photo by Giles Laurent.jpg",
+        "author": "Giles Laurent",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:081_White_rhinoceros_(male)_in_the_Kalahari_Desert_of_Namibia_Photo_by_Giles_Laurent.jpg"
+      }
+    },
+    "bear": {
+      "src": "images/bear.webp",
+      "alt": "A brown bear walking on green grass",
+      "credit": {
+        "title": "Ursus arctos, Kuterevo (HR) -- 2022 -- 0379.jpg",
+        "author": "Anil Öztas",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ursus_arctos,_Kuterevo_(HR)_--_2022_--_0379.jpg"
+      }
+    },
+    "zebra": {
+      "src": "images/zebra.webp",
+      "alt": "A young zebra with black and white stripes, seen from the side",
+      "credit": {
+        "title": "Grant's zebra (Equus quagga boehmi) juvenile Serengeti.jpg",
+        "author": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Grant%27s_zebra_(Equus_quagga_boehmi)_juvenile_Serengeti.jpg"
+      }
+    },
+    "horse": {
+      "src": "images/horse.webp",
+      "alt": "A black horse trotting across a field",
+      "credit": {
+        "title": "Friesian Horse Side View 2.jpg",
+        "author": "Larissa Allen",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Friesian_Horse_Side_View_2.jpg"
+      }
+    },
+    "panda": {
+      "src": "images/panda.webp",
+      "alt": "A giant panda walking out from behind bamboo",
+      "credit": {
+        "title": "Chengdu Sichuan China Panda-breeding-and-research-center-02.jpg",
+        "author": "CEphoto, Uwe Aranas",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chengdu_Sichuan_China_Panda-breeding-and-research-center-02.jpg"
+      }
+    },
+    "penguin": {
+      "src": "images/penguin.webp",
+      "alt": "A king penguin standing on pebbles",
+      "credit": {
+        "title": "SGI-2016-South Georgia (Fortuna Bay)–King penguin (Aptenodytes patagonicus) 04.jpg",
+        "author": "Godot13",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:SGI-2016-South_Georgia_(Fortuna_Bay)%E2%80%93King_penguin_(Aptenodytes_patagonicus)_04.jpg"
+      }
+    },
+    "giraffe": {
+      "src": "images/giraffe.webp",
+      "alt": "A giraffe with a very long neck standing in the grass",
+      "credit": {
+        "title": "South African giraffe (Giraffa camelopardalis giraffa) Kruger.jpg",
+        "author": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:South_African_giraffe_(Giraffa_camelopardalis_giraffa)_Kruger.jpg"
+      }
+    },
+    "camel": {
+      "src": "images/camel.webp",
+      "alt": "A white camel with two humps standing on a grassy plain",
+      "credit": {
+        "title": "A little white camel 02.jpg",
+        "author": "Alexandr frolov",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:A_little_white_camel_02.jpg"
+      }
+    },
+    "ostrich": {
+      "src": "images/ostrich.webp",
+      "alt": "An ostrich with a long neck standing on grass by the sea",
+      "credit": {
+        "title": "Avestruz de cuello azul (Struthio camelus australis), cabo de Buena Esparanza, Sudáfrica, 2018-07-23, DD 87.jpg",
+        "author": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Avestruz_de_cuello_azul_(Struthio_camelus_australis),_cabo_de_Buena_Esparanza,_Sud%C3%A1frica,_2018-07-23,_DD_87.jpg"
+      }
+    },
+    "tiger": {
+      "src": "images/tiger.webp",
+      "alt": "An orange tiger with black stripes walking on a dirt path",
+      "credit": {
+        "title": "Bengal tiger in Sanjay Dubri Tiger Reserve December 2024 by Tisha Mukherjee 15.jpg",
+        "author": "Tisha Mukherjee",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bengal_tiger_in_Sanjay_Dubri_Tiger_Reserve_December_2024_by_Tisha_Mukherjee_15.jpg"
+      }
+    },
+    "lion": {
+      "src": "images/lion.webp",
+      "alt": "A male lion with a big mane lying on a rock",
+      "credit": {
+        "title": "020 The lion king Snyggve in the Serengeti National Park Photo by Giles Laurent.jpg",
+        "author": "Giles Laurent",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:020_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"
+      }
+    },
+    "leopard": {
+      "src": "images/leopard.webp",
+      "alt": "A leopard with dark spots standing in the grass",
+      "credit": {
+        "title": "Male leopard - Mara.jpg",
+        "author": "Sumeet Moghe",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Male_leopard_-_Mara.jpg"
+      }
+    },
+    "cheetah": {
+      "src": "images/cheetah.webp",
+      "alt": "A cheetah with black tear marks on its face, standing in the grass",
+      "credit": {
+        "title": "South African cheetah (Acinonyx jubatus jubatus).jpg",
+        "author": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:South_African_cheetah_(Acinonyx_jubatus_jubatus).jpg"
+      }
+    },
+    "fox": {
+      "src": "images/fox.webp",
+      "alt": "An orange red fox standing among rocks",
+      "credit": {
+        "title": "Renard roux Ichkeul.jpg",
+        "author": "El Golli Mohamed",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Renard_roux_Ichkeul.jpg"
+      }
+    },
+    "crocodile": {
+      "src": "images/crocodile.webp",
+      "alt": "A crocodile with its mouth open, showing its long snout and sharp teeth",
+      "credit": {
+        "title": "Kenyan crocodile (Crocodylus niloticus pauciscutatus).jpg",
+        "author": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Kenyan_crocodile_(Crocodylus_niloticus_pauciscutatus).jpg"
+      }
+    },
+    "turtle": {
+      "src": "images/turtle.webp",
+      "alt": "A tortoise with a patterned shell walking on the ground",
+      "credit": {
+        "title": "Tunisian tortoise (Testudo graeca nabeulensis) juvenile Cap Bon.jpg",
+        "author": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tunisian_tortoise_(Testudo_graeca_nabeulensis)_juvenile_Cap_Bon.jpg"
+      }
+    },
+    "frog": {
+      "src": "images/frog.webp",
+      "alt": "A brown and green frog sitting on a rock",
+      "credit": {
+        "title": "Rana clamitans melanota (Northern Green Frog).jpg",
+        "author": "Michael J. Bennett",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rana_clamitans_melanota_(Northern_Green_Frog).jpg"
+      }
+    },
+    "snake": {
+      "src": "images/snake.webp",
+      "alt": "A long brown snake lying on a rock",
+      "credit": {
+        "title": "Rufous beaked snake (Rhamphiophis rostratus) at Nairobi Snake Park.jpg",
+        "author": "Ethmostigmus",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rufous_beaked_snake_(Rhamphiophis_rostratus)_at_Nairobi_Snake_Park.jpg"
+      }
+    }
   },
   "questions": [
     {
       "id": "q1",
       "prompt": "I am very big and gray. I have a long nose called a trunk.",
       "choices": [
-        { "id": "q1-hippo",    "text": "hippo",    "image": "hippo",    "correct": false },
+        { "id": "q1-hippo", "text": "hippo", "image": "hippo", "correct": false },
         { "id": "q1-elephant", "text": "elephant", "image": "elephant", "correct": true },
-        { "id": "q1-rhino",    "text": "rhino",    "image": "rhino",    "correct": false },
-        { "id": "q1-bear",     "text": "bear",     "image": "bear",     "correct": false }
+        { "id": "q1-rhino", "text": "rhino", "image": "rhino", "correct": false },
+        { "id": "q1-bear", "text": "bear", "image": "bear", "correct": false }
       ]
     },
     {
       "id": "q2",
       "prompt": "I look like a horse, but I have black and white stripes.",
       "choices": [
-        { "id": "q2-horse",   "text": "horse",   "image": "horse",   "correct": false },
-        { "id": "q2-panda",   "text": "panda",   "image": "panda",   "correct": false },
-        { "id": "q2-zebra",   "text": "zebra",   "image": "zebra",   "correct": true },
+        { "id": "q2-horse", "text": "horse", "image": "horse", "correct": false },
+        { "id": "q2-panda", "text": "panda", "image": "panda", "correct": false },
+        { "id": "q2-zebra", "text": "zebra", "image": "zebra", "correct": true },
         { "id": "q2-penguin", "text": "penguin", "image": "penguin", "correct": false }
       ]
     },
@@ -53,7 +251,7 @@
       "id": "q3",
       "prompt": "I am the tallest animal in the world. I have a very long neck.",
       "choices": [
-        { "id": "q3-camel",   "text": "camel",   "image": "camel",   "correct": false },
+        { "id": "q3-camel", "text": "camel", "image": "camel", "correct": false },
         { "id": "q3-ostrich", "text": "ostrich", "image": "ostrich", "correct": false },
         { "id": "q3-giraffe", "text": "giraffe", "image": "giraffe", "correct": true }
       ]
@@ -62,23 +260,23 @@
       "id": "q4",
       "prompt": "I am a big cat. My fur is orange with black stripes.",
       "choices": [
-        { "id": "q4-lion",    "text": "lion",    "image": "lion",    "correct": false },
-        { "id": "q4-tiger",   "text": "tiger",   "image": "tiger",   "correct": true },
+        { "id": "q4-lion", "text": "lion", "image": "lion", "correct": false },
+        { "id": "q4-tiger", "text": "tiger", "image": "tiger", "correct": true },
         { "id": "q4-leopard", "text": "leopard", "image": "leopard", "correct": false },
         { "id": "q4-cheetah", "text": "cheetah", "image": "cheetah", "correct": false },
-        { "id": "q4-zebra",   "text": "zebra",   "image": "zebra",   "correct": false },
-        { "id": "q4-fox",     "text": "fox",     "image": "fox",     "correct": false }
+        { "id": "q4-zebra", "text": "zebra", "image": "zebra", "correct": false },
+        { "id": "q4-fox", "text": "fox", "image": "fox", "correct": false }
       ]
     },
     {
       "id": "q5",
       "prompt": "I live in rivers. I have a long mouth and lots of sharp teeth.",
       "choices": [
-        { "id": "q5-hippo",     "text": "hippo",     "image": "hippo",     "correct": false },
-        { "id": "q5-turtle",    "text": "turtle",    "image": "turtle",    "correct": false },
-        { "id": "q5-frog",      "text": "frog",      "image": "frog",      "correct": false },
+        { "id": "q5-hippo", "text": "hippo", "image": "hippo", "correct": false },
+        { "id": "q5-turtle", "text": "turtle", "image": "turtle", "correct": false },
+        { "id": "q5-frog", "text": "frog", "image": "frog", "correct": false },
         { "id": "q5-crocodile", "text": "crocodile", "image": "crocodile", "correct": true },
-        { "id": "q5-snake",     "text": "snake",     "image": "snake",     "correct": false }
+        { "id": "q5-snake", "text": "snake", "image": "snake", "correct": false }
       ]
     }
   ]

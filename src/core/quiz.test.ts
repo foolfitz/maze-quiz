@@ -67,10 +67,14 @@ describe('範例題組 zoo-animals', () => {
     if (result.ok) expect(result.quiz).toEqual(sampleQuiz);
   });
 
-  it('只有「尚未補上授權資訊」的警告，每張圖一則', () => {
-    const warnings = warningsOf(sampleQuiz);
-    expect(warnings).toHaveLength(Object.keys(sampleQuiz.images).length);
-    for (const warning of warnings) expect(warning).toMatch(/^images\.\w+\.credit：/);
+  it('沒有任何警告：每張圖都補上了授權資訊（§13）', () => {
+    expect(warningsOf(sampleQuiz)).toEqual([]);
+  });
+
+  it('每張圖都只用 §13.1 允許的授權', () => {
+    for (const asset of Object.values(sampleQuiz.images)) {
+      expect(asset.credit?.license).toMatch(/^(CC0 1\.0|Public domain|CC BY(-SA)? \d\.\d)/);
+    }
   });
 });
 

@@ -54,6 +54,54 @@ body {
   background: rgb(234 217 166 / 0.85);
 }
 
+/* 圖片來源；.card 的規則寫在後面，所以這裡要用兩個 class 提高優先順序 */
+.card.card-credits {
+  width: min(100%, 44rem);
+  text-align: left;
+}
+
+.credit-list {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credit-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: 1px solid rgb(31 42 36 / 0.12);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.credit-item p {
+  margin: 2px 0 0;
+}
+
+.credit-thumb {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #f4f1e8;
+  border-radius: 6px;
+}
+
+.credit-title {
+  font-weight: 700;
+}
+
+.card a {
+  color: var(--keeper);
+}
+
+.card a:focus-visible {
+  outline: 3px solid var(--keeper);
+  outline-offset: 2px;
+}
+
 .score {
   margin: 0.5rem 0 0;
   font-size: 1.5rem;
@@ -222,6 +270,20 @@ progress {
   gap: 12px;
   min-height: 4.5rem;
   padding: 8px 16px 16px;
+}
+
+.prompt-image {
+  flex: none;
+  width: auto;
+  height: 3.5rem;
+  max-width: 6rem;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--card);
+}
+
+.prompt-image[hidden] {
+  display: none;
 }
 
 .prompt-text {

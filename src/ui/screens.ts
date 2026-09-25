@@ -1,4 +1,4 @@
-import type { QuizFile } from '../core/quiz';
+import type { ImageAsset, QuizFile } from '../core/quiz';
 import { button, el } from './dom';
 import { STRINGS } from './strings';
 
@@ -83,4 +83,58 @@ export function showResults(root: HTMLElement, score: number, total: number, onP
   ]);
   root.classList.add('backdrop');
   again.focus();
+}
+
+/**
+ * 圖片來源（§13.4）：從 quiz.json 的 credit 自動產生。
+ * CC BY 與 CC BY-SA 都要求標示作者與授權，所以每張圖都列出作品名稱、作者與授權連結。
+ */
+export function showCredits(
+  root: HTMLElement,
+  quiz: QuizFile,
+  images: ReadonlyMap<string, HTMLImageElement>,
+  onBack: () => void,
+): void {
+  const back = button(STRINGS.back, onBack, 'primary');
+  const items = Object.entries(quiz.images).map(([key, asset]) => creditItem(asset, images.get(key) ?? null));
+  showCard(
+    root,
+    [
+      el('h1', { text: STRINGS.credits }),
+      el('p', { className: 'muted', text: STRINGS.creditsIntro }),
+      el('ul', { className: 'credit-list', children: items }),
+      el('div', { className: 'actions', children: [back] }),
+    ],
+    'card-credits',
+  );
+  // 清單很長：焦點放在「返回」，但畫面停在最上面，不要被焦點帶到底部
+  back.focus({ preventScroll: true });
+  root.scrollTop = 0;
+}
+
+function creditItem(asset: ImageAsset, image: HTMLImageElement | null): HTMLLIElement {
+  const thumb =
+    image === null
+      ? el('div', { className: 'credit-thumb' })
+      : el('img', { className: 'credit-thumb', attrs: { src: image.src, alt: asset.alt } });
+  const { credit } = asset;
+  const details =
+    credit === null
+      ? [el('p', { className: 'muted', text: STRINGS.creditMissing })]
+      : [
+          el('a', { className: 'credit-title', text: credit.title, attrs: externalLink(credit.sourceUrl) }),
+          el('p', { text: STRINGS.creditAuthor(credit.author) }),
+          el('p', {
+            children: [
+              document.createTextNode(STRINGS.creditLicense),
+              el('a', { text: credit.license, attrs: externalLink(credit.licenseUrl) }),
+            ],
+          }),
+        ];
+  return el('li', { className: 'credit-item', children: [thumb, el('div', { children: details })] });
+}
+
+/** 在新分頁開啟外部連結 */
+function externalLink(href: string): Record<string, string> {
+  return { href, target: '_blank', rel: 'noopener noreferrer' };
 }

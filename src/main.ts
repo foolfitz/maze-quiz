@@ -25,7 +25,7 @@ import { renderDebugPanel, updateDebugFps, updateDebugPlayer } from './ui/debugP
 import { requireElement } from './ui/dom';
 import { fitPrompt, showPrompt } from './ui/promptBar';
 import { showRipple } from './ui/ripple';
-import { showError, showLoading, showResults, showTitle, showTitleNotice } from './ui/screens';
+import { showCredits, showError, showLoading, showResults, showTitle, showTitleNotice } from './ui/screens';
 import { STRINGS } from './ui/strings';
 import { parseUrlParams, quizJsonPath, type UrlParams } from './urlParams';
 
@@ -85,6 +85,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const stageMessage = requireElement('stage-message', HTMLDivElement);
   const questionNumber = requireElement('question-number', HTMLSpanElement);
   const promptText = requireElement('prompt-text', HTMLParagraphElement);
+  const promptImage = requireElement('prompt-image', HTMLImageElement);
   const debugRoot = requireElement('debug-panel', HTMLElement);
 
   const fixedSeed = params.seed === null ? null : seedFromText(params.seed);
@@ -119,7 +120,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
         gameRoot.hidden = false;
       },
       onLeaderboard: () => showTitleNotice(overlay, STRINGS.notImplemented),
-      onCredits: () => showTitleNotice(overlay, STRINGS.notImplemented),
+      onCredits: () => showCredits(overlay, quiz, data.images, showTitleScreen),
     });
   };
 
@@ -130,7 +131,14 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
     const distances = params.debug ? bfs(maze.grid, maze.start, (tile) => isCorridor(maze, tile)) : null;
 
     questionNumber.textContent = STRINGS.questionNumber(state.levelIndex + 1, state.order.length);
-    showPrompt(promptText, level.question.prompt, quiz.locale);
+    const questionImage = level.question.image;
+    showPrompt(
+      promptText,
+      promptImage,
+      level.question.prompt,
+      quiz.locale,
+      questionImage === undefined ? null : (data.images.get(questionImage) ?? null),
+    );
 
     if (distances !== null) {
       renderDebugPanel(debugRoot, {
@@ -147,7 +155,11 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
 
     return {
       level,
-      labels: choices.map((choice) => ({ text: choice?.text ?? '' })),
+      labels: choices.map((choice) => ({
+        text: choice?.text ?? '',
+        // 圖片載入失敗時查不到，改用純文字顯示（§4.3）
+        image: choice?.image === undefined ? null : (data.images.get(choice.image) ?? null),
+      })),
       debug:
         distances === null ? null : { distances, correct: choices.map((choice) => choice?.correct ?? false) },
     };
