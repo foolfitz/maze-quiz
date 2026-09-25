@@ -16,6 +16,8 @@ export const STRINGS = {
   leaderboard: '排行榜',
   credits: '圖片來源',
   questionCount: (count: number) => `共 ${count} 題`,
+  dpadSetting: '觸控方向鍵',
+  dpadSides: { right: '右邊', left: '左邊', off: '不顯示' },
   notImplemented: '這個功能還沒做好。',
 
   // 遊戲畫面

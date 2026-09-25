@@ -316,6 +316,143 @@ progress {
   overflow-wrap: anywhere;
 }
 
+/* 觸控方向鍵（試玩回饋加的）：放在題目列的右邊或左邊，整組當成一個搖桿 */
+.dpad {
+  --dpad-cell: clamp(44px, 7vmin, 60px); /* 每個鍵至少 44 px（§7.4） */
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, var(--dpad-cell));
+  grid-template-rows: repeat(3, var(--dpad-cell));
+  gap: 2px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dpad[hidden] {
+  display: none;
+}
+
+.game[data-dpad='left'] .dpad {
+  order: -1;
+}
+
+.dpad-btn {
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 2px solid var(--hedge);
+  border-radius: 10px;
+  color: var(--hedge);
+}
+
+.dpad-btn svg {
+  width: 55%;
+  height: 55%;
+  fill: currentColor;
+}
+
+.dpad-up {
+  grid-area: 1 / 2;
+}
+
+.dpad-left {
+  grid-area: 2 / 1;
+}
+
+.dpad-left svg {
+  transform: rotate(-90deg);
+}
+
+.dpad-right {
+  grid-area: 2 / 3;
+}
+
+.dpad-right svg {
+  transform: rotate(90deg);
+}
+
+.dpad-down {
+  grid-area: 3 / 2;
+}
+
+.dpad-down svg {
+  transform: rotate(180deg);
+}
+
+/* 按著的方向 */
+.dpad[data-active='up'] .dpad-up,
+.dpad[data-active='left'] .dpad-left,
+.dpad[data-active='right'] .dpad-right,
+.dpad[data-active='down'] .dpad-down {
+  background: var(--hedge);
+  color: #fff;
+}
+
+/* 標題畫面的方向鍵設定：三個選項並排，每個至少 44 px 高 */
+.setting {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.setting legend {
+  margin: 0 auto 0.5rem;
+  color: var(--muted);
+}
+
+.segmented {
+  display: flex;
+  justify-content: center;
+}
+
+.segmented label {
+  cursor: pointer;
+}
+
+/* 看得到的是選項後面的文字；:checked + span 在舊版 iPad Safari 也能用（:has() 要 15.4 以上） */
+.segmented span {
+  display: grid;
+  place-items: center;
+  min-width: 5rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 2px solid var(--hedge);
+  color: var(--hedge);
+}
+
+.segmented label + label span {
+  border-left-width: 0;
+}
+
+.segmented label:first-child span {
+  border-radius: 8px 0 0 8px;
+}
+
+.segmented label:last-child span {
+  border-radius: 0 8px 8px 0;
+}
+
+/* 選項本身藏起來，但保留給鍵盤與螢幕閱讀器使用 */
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented input:checked + span {
+  background: var(--hedge);
+  color: #fff;
+  font-weight: 700;
+}
+
+.segmented input:focus-visible + span {
+  outline: 3px solid var(--keeper);
+  outline-offset: 2px;
+}
+
 /* 觸控漣漪 */
 .ripple {
   position: absolute;

@@ -20,6 +20,7 @@ import { isCorridor } from './core/maze';
 import { seedFromText } from './core/rng';
 import { computeScore } from './core/scoring';
 import type { Direction, Phase } from './core/types';
+import { attachDpad } from './input/dpad';
 import { attachKeyboard, isTextInput } from './input/keyboard';
 import { attachPointer } from './input/pointer';
 import { preventPinchZoom } from './input/zoomGuard';
@@ -33,6 +34,7 @@ import {
   type ZoneLabel,
 } from './render/renderer';
 import { ZOO_THEME } from './render/theme';
+import { getLocalStorage, loadDpadSide, saveDpadSide, type DpadSide } from './storage/preferences';
 import { renderDebugPanel, updateDebugFps, updateDebugLine } from './ui/debugPanel';
 import { requireElement } from './ui/dom';
 import { fitPrompt, showPrompt } from './ui/promptBar';
@@ -117,6 +119,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const promptText = requireElement('prompt-text', HTMLParagraphElement);
   const promptImage = requireElement('prompt-image', HTMLImageElement);
   const debugRoot = requireElement('debug-panel', HTMLElement);
+  const dpad = requireElement('dpad', HTMLDivElement);
 
   const fixedSeed = params.seed === null ? null : seedFromText(params.seed);
   // 網址參數 difficulty 蓋過題組的設定（測試用，見 DECISIONS.md）
@@ -130,6 +133,16 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   reducedMotion.addEventListener('change', () => {
     renderer.reducedMotion = reducedMotion.matches;
   });
+
+  // 觸控方向鍵：有觸控螢幕的裝置預設放右邊，否則不顯示；使用者在標題畫面改過就記在這台裝置上
+  const preferences = getLocalStorage();
+  const hasTouch = window.matchMedia('(any-pointer: coarse)').matches;
+  let dpadSide = loadDpadSide(preferences, hasTouch ? 'right' : 'off');
+  const applyDpadSide = (side: DpadSide): void => {
+    gameRoot.dataset.dpad = side;
+    dpad.hidden = side === 'off';
+  };
+  applyDpadSide(dpadSide);
 
   // 每一局用新的種子；網址指定了 ?seed 時每局都一樣，方便重現
   const newGame = (): GameState => createGame(quiz, options, fixedSeed ?? randomSeed());
@@ -155,6 +168,12 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
       },
       onLeaderboard: () => showTitleNotice(overlay, STRINGS.notImplemented),
       onCredits: () => showCredits(overlay, quiz, data.images, showTitleScreen),
+      dpadSide,
+      onDpadSideChange: (side) => {
+        dpadSide = side;
+        saveDpadSide(preferences, side);
+        applyDpadSide(side);
+      },
     });
   };
 
@@ -256,6 +275,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   };
 
   attachKeyboard(window, { onDirection });
+  attachDpad(dpad, { onDirection });
   attachPointer(
     stage,
     {

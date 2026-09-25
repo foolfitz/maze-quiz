@@ -1,4 +1,5 @@
 import type { ImageAsset, QuizFile } from '../core/quiz';
+import { DPAD_SIDES, type DpadSide } from '../storage/preferences';
 import { button, el } from './dom';
 import { STRINGS } from './strings';
 
@@ -46,6 +47,9 @@ export interface TitleHandlers {
   readonly onStart: () => void;
   readonly onLeaderboard: () => void;
   readonly onCredits: () => void;
+  /** 目前的方向鍵位置與改變時的處理 */
+  readonly dpadSide: DpadSide;
+  readonly onDpadSideChange: (side: DpadSide) => void;
 }
 
 export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHandlers): void {
@@ -61,10 +65,27 @@ export function showTitle(root: HTMLElement, quiz: QuizFile, handlers: TitleHand
         button(STRINGS.credits, handlers.onCredits),
       ],
     }),
+    dpadSetting(handlers.dpadSide, handlers.onDpadSideChange),
     // 暫時的提示訊息放這裡，螢幕閱讀器會唸出變化
     el('p', { className: 'notice', attrs: { id: 'title-notice', 'aria-live': 'polite' } }),
   ]);
   startButton.focus();
+}
+
+/** 方向鍵放右邊、左邊或不顯示：三個並排的單選選項 */
+function dpadSetting(current: DpadSide, onChange: (side: DpadSide) => void): HTMLFieldSetElement {
+  const options = DPAD_SIDES.map((side) => {
+    const input = el('input', { attrs: { type: 'radio', name: 'dpad-side', value: side } });
+    input.checked = side === current;
+    input.addEventListener('change', () => {
+      if (input.checked) onChange(side);
+    });
+    return el('label', { children: [input, el('span', { text: STRINGS.dpadSides[side] })] });
+  });
+  return el('fieldset', {
+    className: 'setting',
+    children: [el('legend', { text: STRINGS.dpadSetting }), el('div', { className: 'segmented', children: options })],
+  });
 }
 
 /** 在標題畫面下方顯示一行提示 */

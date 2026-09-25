@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 不允許縮放：平板上兩指誤觸會把遊戲畫面放大，放大後就看不到題目 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>迷宮問答</title>
   </head>
   <body>
@@ -20,6 +21,13 @@
         <footer class="prompt-bar">
           <img id="prompt-image" class="prompt-image" alt="" hidden />
           <p id="prompt-text" class="prompt-text quiz-text" aria-live="polite"></p>
+          <!-- 觸控方向鍵；鍵盤可以用方向鍵，所以螢幕閱讀器略過它 -->
+          <div id="dpad" class="dpad" aria-hidden="true" hidden>
+            <span class="dpad-btn dpad-up"><svg viewBox="0 0 10 10"><path d="M5 1.5 9 8H1z" /></svg></span>
+            <span class="dpad-btn dpad-left"><svg viewBox="0 0 10 10"><path d="M5 1.5 9 8H1z" /></svg></span>
+            <span class="dpad-btn dpad-right"><svg viewBox="0 0 10 10"><path d="M5 1.5 9 8H1z" /></svg></span>
+            <span class="dpad-btn dpad-down"><svg viewBox="0 0 10 10"><path d="M5 1.5 9 8H1z" /></svg></span>
+          </div>
         </footer>
       </div>
       <aside id="debug-panel" class="debug-panel" hidden></aside>
