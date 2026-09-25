@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { DIRECTION_VECTORS, isHorizontal, opposite, step, type Passable, type Tile } from './grid';
+import { advanceToNextCenter, isHorizontal, nearestTile, opposite, step, type Passable, type Tile } from './grid';
 import type { Direction } from './types';
 
 export interface PlayerConfig {
@@ -28,7 +28,7 @@ export function createPlayer(start: Tile): Player {
 
 /** 玩家中心所在的格子 */
 export function playerTile(player: Player): Tile {
-  return { x: Math.round(player.x), y: Math.round(player.y) };
+  return nearestTile(player);
 }
 
 /** 收到方向指令後發生了什麼；介面依此決定要不要播放碰壁回饋 */
@@ -122,14 +122,7 @@ export function updatePlayer(
     }
 
     // 往前走，最多走到下一個格子中心
-    const sign = DIRECTION_VECTORS[dir].x + DIRECTION_VECTORS[dir].y; // +1 或 -1
-    const target = sign > 0 ? Math.floor(along) + 1 : Math.ceil(along) - 1;
-    const distance = Math.abs(target - along);
-    // 走到中心時直接設成整數，避免浮點誤差累積
-    const next = remaining >= distance ? target : along + sign * remaining;
-    remaining -= Math.min(remaining, distance);
-    if (horizontal) player.x = next;
-    else player.y = next;
+    remaining = advanceToNextCenter(player, dir, remaining);
   }
 
   // 寬限時間倒數；這一步經過的格子中心已經在上面檢查過了

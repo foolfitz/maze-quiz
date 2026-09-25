@@ -1,12 +1,17 @@
 import './style.css';
 import { CONFIG } from './config';
+import { enemyTarget } from './core/enemies';
 import {
   createGame,
   debugCompleteLevel,
+  debugLoseLife,
+  debugToggleInvincible,
+  difficultyRow,
   levelMaze,
   startGame,
   steer,
   stepGame,
+  viewResults,
   type GameState,
   type Level,
 } from './core/game';
@@ -15,17 +20,32 @@ import { isCorridor } from './core/maze';
 import { seedFromText } from './core/rng';
 import { computeScore } from './core/scoring';
 import type { Direction, Phase } from './core/types';
-import { attachKeyboard } from './input/keyboard';
+import { attachKeyboard, isTextInput } from './input/keyboard';
 import { attachPointer } from './input/pointer';
 import { loadQuiz, type LoadedQuiz } from './loader';
 import { startLoop } from './loop';
-import { Renderer, type DebugLayer, type ZoneFeedback, type ZoneLabel } from './render/renderer';
+import {
+  Renderer,
+  type DebugLayer,
+  type PlayerCondition,
+  type ZoneFeedback,
+  type ZoneLabel,
+} from './render/renderer';
 import { ZOO_THEME } from './render/theme';
-import { renderDebugPanel, updateDebugFps, updateDebugPlayer } from './ui/debugPanel';
+import { renderDebugPanel, updateDebugFps, updateDebugLine } from './ui/debugPanel';
 import { requireElement } from './ui/dom';
 import { fitPrompt, showPrompt } from './ui/promptBar';
 import { showRipple } from './ui/ripple';
-import { showCredits, showError, showLoading, showResults, showTitle, showTitleNotice } from './ui/screens';
+import {
+  showCredits,
+  showError,
+  showGameOver,
+  showLoading,
+  showResults,
+  showTitle,
+  showTitleNotice,
+} from './ui/screens';
+import { showLives } from './ui/statusBar';
 import { STRINGS } from './ui/strings';
 import { parseUrlParams, quizJsonPath, type UrlParams } from './urlParams';
 
@@ -76,6 +96,12 @@ function feedbackFor(phase: Phase, level: Level): ZoneFeedback | null {
   return null;
 }
 
+/** 玩家要畫成什麼樣子：受傷動畫、重生後的無敵，或平常。無敵只在 playing 倒數，其他時候全場靜止、不閃爍。 */
+function playerCondition(phase: Phase, level: Level): PlayerCondition {
+  if (phase.kind === 'lifeLost') return 'hurt';
+  return phase.kind === 'playing' && level.invulnerableMs > 0 ? 'invulnerable' : 'normal';
+}
+
 /** 組裝畫面、輸入與遊戲迴圈。遊戲規則都在 core/game.ts，這裡只負責把狀態顯示出來。 */
 function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): void {
   const { quiz } = data;
@@ -84,11 +110,14 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const canvas = requireElement('maze-canvas', HTMLCanvasElement);
   const stageMessage = requireElement('stage-message', HTMLDivElement);
   const questionNumber = requireElement('question-number', HTMLSpanElement);
+  const livesDisplay = requireElement('lives', HTMLSpanElement);
   const promptText = requireElement('prompt-text', HTMLParagraphElement);
   const promptImage = requireElement('prompt-image', HTMLImageElement);
   const debugRoot = requireElement('debug-panel', HTMLElement);
 
   const fixedSeed = params.seed === null ? null : seedFromText(params.seed);
+  // 網址參數 difficulty 蓋過題組的設定（測試用，見 DECISIONS.md）
+  const options = params.difficulty === null ? data.options : { ...data.options, difficulty: params.difficulty };
   const mazeConfig = CONFIG.maze;
   const renderer = new Renderer(canvas, ZOO_THEME);
 
@@ -100,10 +129,11 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   });
 
   // 每一局用新的種子；網址指定了 ?seed 時每局都一樣，方便重現
-  const newGame = (): GameState => createGame(quiz, data.options, fixedSeed ?? randomSeed());
+  const newGame = (): GameState => createGame(quiz, options, fixedSeed ?? randomSeed());
   let state = newGame();
   let view: LevelView | null = null;
   let shownPhase: Phase['kind'] | null = null;
+  let shownLives: number | null = null;
 
   // ─── 畫面切換 ───────────────────────────────────────────────
 
@@ -111,6 +141,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
     state = newGame();
     view = null;
     shownPhase = null;
+    shownLives = null;
     gameRoot.hidden = true;
     debugRoot.hidden = true;
     showTitle(overlay, quiz, {
@@ -150,6 +181,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
           distance: distances.get(zone.outside),
         })),
         warnings: data.warnings,
+        difficulty: { level: state.options.difficulty, ...difficultyRow(state) },
       });
     }
 
@@ -169,6 +201,7 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const onPhaseChanged = (phase: Phase): void => {
     stageMessage.hidden = phase.kind !== 'levelIntro';
     if (phase.kind === 'levelIntro') stageMessage.textContent = STRINGS.ready;
+    if (phase.kind === 'gameOver') showGameOver(overlay, () => viewResults(state));
     if (phase.kind === 'results') {
       showResults(overlay, computeScore(state.results), state.order.length, showTitleScreen);
     }
@@ -178,6 +211,10 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
   const syncUi = (): void => {
     const { level } = state;
     if (level !== null && view?.level !== level) view = showLevel(level);
+    if (state.lives !== shownLives) {
+      shownLives = state.lives;
+      showLives(livesDisplay, state.lives, state.options.lives);
+    }
     if (state.phase.kind !== shownPhase) {
       shownPhase = state.phase.kind;
       onPhaseChanged(state.phase);
@@ -226,9 +263,14 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
     { onDirection, onPress: (x, y) => showRipple(stage, x, y) },
   );
 
+  // 除錯快捷鍵（§12.6）：N 直接過關、K 扣一條命、I 切換無敵
   if (params.debug) {
     window.addEventListener('keydown', (event) => {
-      if (event.code === 'KeyN' && !event.repeat) debugCompleteLevel(state);
+      // 和 keyboard.ts 一樣：保留瀏覽器快捷鍵，正在輸入文字時也不攔截
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || isTextInput(event.target)) return;
+      if (event.code === 'KeyN') debugCompleteLevel(state);
+      else if (event.code === 'KeyK') debugLoseLife(state);
+      else if (event.code === 'KeyI') debugToggleInvincible(state);
     });
   }
 
@@ -242,14 +284,24 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
         syncUi();
         const { level } = state;
         if (level === null || view === null || gameRoot.hidden) return;
+        const maze = levelMaze(level);
+        const { player } = level;
         renderer.draw(
           {
-            maze: levelMaze(level),
+            maze,
             labels: view.labels,
             sealed: level.sealed,
             feedback: feedbackFor(state.phase, level),
             debug: view.debug,
-            player: level.player,
+            player: { ...player, condition: playerCondition(state.phase, level) },
+            enemies: level.enemies.map((enemy) => ({
+              kind: enemy.kind,
+              x: enemy.x,
+              y: enemy.y,
+              dir: enemy.dir,
+              // 除錯模式才畫目標格
+              target: params.debug ? enemyTarget(enemy, player, maze, state.config.enemy.ambushLookahead) : null,
+            })),
           },
           nowMs,
         );
@@ -259,11 +311,13 @@ function runApp(data: LoadedQuiz, params: UrlParams, overlay: HTMLDivElement): v
             shownFps = loop.fps();
             updateDebugFps(debugRoot, shownFps);
           }
-          const { x, y, dir, pendingDir } = level.player;
-          updateDebugPlayer(
+          const { x, y, dir, pendingDir } = player;
+          updateDebugLine(
             debugRoot,
+            'debug-player',
             STRINGS.debug.player(x.toFixed(2), y.toFixed(2), dir ?? '—', pendingDir ?? '—'),
           );
+          updateDebugLine(debugRoot, 'debug-invincible', STRINGS.debug.invincible(state.debugInvincible));
         }
       },
     },

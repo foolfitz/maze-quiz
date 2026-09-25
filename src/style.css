@@ -225,6 +225,20 @@ progress {
   font-size: 1.1rem;
 }
 
+/* 生命（§12.1）：實心 ♥ 是剩下的命，空心 ♡ 是用掉的 */
+.lives {
+  display: flex;
+  gap: 0.2em;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--wrong);
+}
+
+.heart-lost {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
 /* 整個舞台都接受觸控，不只迷宮本身；平板上不捲動、不縮放、不跳出長按選單、不選取文字（§7.4） */
 .stage {
   position: relative;

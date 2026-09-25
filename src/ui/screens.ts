@@ -73,6 +73,14 @@ export function showTitleNotice(root: HTMLElement, message: string): void {
   if (notice !== null) notice.textContent = message;
 }
 
+/** 沒有命了（§5.1）：疊在遊戲畫面上，按「看成績」進入結算 */
+export function showGameOver(root: HTMLElement, onViewResults: () => void): void {
+  const view = button(STRINGS.viewResults, onViewResults, 'primary');
+  showCard(root, [el('h1', { text: STRINGS.gameOver }), el('div', { className: 'actions', children: [view] })]);
+  root.classList.add('backdrop');
+  view.focus();
+}
+
 /** 簡易結算（M3）：一次答對的題數與「再玩一次」。逐題回顧在 M6。 */
 export function showResults(root: HTMLElement, score: number, total: number, onPlayAgain: () => void): void {
   const again = button(STRINGS.playAgain, onPlayAgain, 'primary');

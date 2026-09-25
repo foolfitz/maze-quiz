@@ -50,6 +50,33 @@ export function step(tile: Tile, direction: Direction, distance = 1): Tile {
   return { x: tile.x + v.x * distance, y: tile.y + v.y * distance };
 }
 
+/** 浮點數格座標（整數值是格子中心）最接近的格子 */
+export function nearestTile(point: { readonly x: number; readonly y: number }): Tile {
+  return { x: Math.round(point.x), y: Math.round(point.y) };
+}
+
+/**
+ * 沿 direction 前進 distance 格，但最多走到下一個格子中心；回傳還沒走完的距離。
+ * 玩家與敵人共用：每走到一個中心就停下來，讓呼叫的人檢查轉向或做決策，速度再快也不會跳過中心點或穿牆。
+ * position 必須在走廊中央線上（與方向垂直的座標是整數）。
+ */
+export function advanceToNextCenter(
+  position: { x: number; y: number },
+  direction: Direction,
+  distance: number,
+): number {
+  const horizontal = isHorizontal(direction);
+  const along = horizontal ? position.x : position.y;
+  const sign = DIRECTION_VECTORS[direction].x + DIRECTION_VECTORS[direction].y; // +1 或 -1
+  const center = sign > 0 ? Math.floor(along) + 1 : Math.ceil(along) - 1;
+  const gap = Math.abs(center - along);
+  // 走到中心時直接設成整數，避免浮點誤差累積
+  const next = distance >= gap ? center : along + sign * distance;
+  if (horizontal) position.x = next;
+  else position.y = next;
+  return distance - Math.min(distance, gap);
+}
+
 export function sameTile(a: Tile, b: Tile): boolean {
   return a.x === b.x && a.y === b.y;
 }

@@ -12,6 +12,13 @@ export interface DebugPanelInfo {
   /** 各答案區的名稱與起點到門外的步數，順序與 maze.zones 相同 */
   readonly zoneDistances: readonly { readonly label: string; readonly distance: number | null }[];
   readonly warnings: readonly string[];
+  /** 目前難度與對應的敵人設定 */
+  readonly difficulty: {
+    readonly level: number;
+    readonly enemyCount: number;
+    readonly enemySpeedRatio: number;
+    readonly smartRatio: number;
+  };
 }
 
 /** 除錯覆蓋層的文字部分；格線、距離等畫在 canvas 上（renderer.ts） */
@@ -26,6 +33,15 @@ export function renderDebugPanel(root: HTMLElement, info: DebugPanelInfo): void 
   const children: Node[] = [
     el('p', { className: 'debug-fps', text: T.fps('—') }),
     el('p', { className: 'debug-player' }),
+    el('p', { className: 'debug-invincible' }),
+    el('p', {
+      text: T.difficulty(
+        info.difficulty.level,
+        info.difficulty.enemyCount,
+        info.difficulty.enemySpeedRatio,
+        info.difficulty.smartRatio,
+      ),
+    }),
     el('p', { text: T.seed(info.baseSeed) }),
     el('p', { text: T.level(info.levelIndex + 1, result.seed, result.attempt) }),
     el('p', { text: `${T.distances}${distances}（${T.ratio(ratio)}）` }),
@@ -65,10 +81,13 @@ export function updateDebugFps(root: HTMLElement, fps: number): void {
   if (line !== null) line.textContent = T.fps(fps.toFixed(0));
 }
 
-/** 更新玩家狀態那一行；內容沒變就不動 DOM */
-export function updateDebugPlayer(root: HTMLElement, text: string): void {
-  const line = root.querySelector('.debug-player');
-  if (line !== null && line.textContent !== text) line.textContent = text;
+/** 每幀更新的那幾行 */
+export type DebugLine = 'debug-player' | 'debug-invincible';
+
+/** 更新玩家狀態、無敵開關等每幀都可能變的那幾行；內容沒變就不動 DOM */
+export function updateDebugLine(root: HTMLElement, line: DebugLine, text: string): void {
+  const element = root.querySelector(`.${line}`);
+  if (element !== null && element.textContent !== text) element.textContent = text;
 }
 
 function describeViolation(violation: MazeViolation, zoneLabels: readonly string[]): string {

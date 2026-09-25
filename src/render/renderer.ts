@@ -1,6 +1,7 @@
+import { ENEMY_KINDS, type EnemyKind } from '../core/enemies';
 import { DIRECTION_VECTORS, type DistanceField, type Rect, type Tile } from '../core/grid';
 import type { Maze } from '../core/maze';
-import type { Direction } from '../core/types';
+import { assertNever, type Direction } from '../core/types';
 import type { Theme } from './theme';
 
 /** 答案區裡要顯示的內容，順序與 maze.zones 相同 */
@@ -22,9 +23,20 @@ export interface TilePoint {
   readonly y: number;
 }
 
+/** 玩家的樣子：平常、重生後的無敵（閃爍）、受傷動畫（§10、§12.5） */
+export type PlayerCondition = 'normal' | 'invulnerable' | 'hurt';
+
 export interface PlayerView extends TilePoint {
   readonly dir: Direction | null;
   readonly pendingDir: Direction | null;
+  readonly condition: PlayerCondition;
+}
+
+export interface EnemyView extends TilePoint {
+  readonly kind: EnemyKind;
+  readonly dir: Direction | null;
+  /** 目前的目標格，除錯模式才畫（§12.6）；不畫時是 null */
+  readonly target: Tile | null;
 }
 
 /** 走進園區時的大 ✓ ✗ */
@@ -41,12 +53,17 @@ export interface Scene {
   readonly feedback: ZoneFeedback | null;
   readonly debug: DebugLayer | null;
   readonly player: PlayerView;
+  readonly enemies: readonly EnemyView[];
 }
 
 /** 選項文字的最小字級（CSS px，§8） */
 const MIN_LABEL_FONT_PX = 12;
 /** 碰壁抖動的長度 */
 const BUMP_MS = 180;
+/** 受傷與無敵時的閃爍：每隔多久切換一次 */
+const FLASH_MS = 100;
+/** reduced motion 時，無敵期間改用固定的半透明（§12.5） */
+const INVULNERABLE_ALPHA = 0.45;
 
 /** 各方向的角度（弧度），畫箭頭時用來旋轉 */
 const DIRECTION_ANGLES: Readonly<Record<Direction, number>> = {
@@ -136,6 +153,10 @@ export class Renderer {
     ctx.drawImage(this.staticLayer, 0, 0);
     ctx.restore();
 
+    for (const enemy of scene.enemies) {
+      if (enemy.target !== null) this.drawEnemyTarget(enemy, enemy.target);
+    }
+    for (const enemy of scene.enemies) this.drawEnemy(enemy);
     this.drawPlayer(scene.player, nowMs);
 
     // 走進園區時的大 ✓ ✗，蓋在玩家上面
@@ -349,11 +370,12 @@ export class Renderer {
     });
     ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
 
-    // 敵人出生點
+    // 敵人出生點：第 i 個出生點放第 i 種敵人
     ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
     maze.enemySpawns.forEach((spawn: Tile, i) => {
       const { x, y } = this.center(spawn);
-      const color = theme.enemies[i % theme.enemies.length] ?? theme.wrong;
+      const kind = ENEMY_KINDS[i];
+      const color = kind === undefined ? theme.wrong : theme.enemies[kind];
       ctx.lineWidth = 2;
       ctx.strokeStyle = color;
       ctx.strokeRect(x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6);
@@ -382,14 +404,26 @@ export class Renderer {
       }
     }
 
+    // 受傷：紅藍交替閃爍；無敵：忽隱忽現。reduced motion 時不閃爍，改用固定的紅色或半透明（§12.5）
+    const flashOn = !this.reducedMotion && Math.floor(nowMs / FLASH_MS) % 2 === 0;
+    const hurt = player.condition === 'hurt';
+    let alpha = 1;
+    if (player.condition === 'invulnerable') alpha = this.reducedMotion ? INVULNERABLE_ALPHA : flashOn ? 1 : 0.2;
+    const fill = hurt && (this.reducedMotion || flashOn) ? theme.wrong : theme.keeper;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
     const r = s * 0.36;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = theme.keeper;
+    ctx.fillStyle = fill;
     ctx.fill();
     ctx.lineWidth = Math.max(1, s * 0.06);
     ctx.strokeStyle = '#FFFFFF';
     ctx.stroke();
+    ctx.restore();
+    // 受傷動畫期間不畫方向箭頭
+    if (hurt) return;
 
     // 目前方向：角色身上的小箭頭
     if (player.dir !== null) {
@@ -424,6 +458,88 @@ export class Renderer {
         ctx.fill();
       });
     }
+  }
+
+  /**
+   * 敵人：三種外形不同，不只靠顏色區分（§9）——chaser 是尖刺球、wanderer 是方塊、ambusher 是三角形。
+   * 都有一雙看向前進方向的眼睛，和玩家（圓形加箭頭）也分得開。
+   */
+  private drawEnemy(enemy: EnemyView): void {
+    const { ctx, theme } = this;
+    const s = this.tileSize;
+    const { x, y } = this.center(enemy);
+    const r = s * 0.4;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    switch (enemy.kind) {
+      case 'chaser': {
+        const spikes = 8;
+        for (let i = 0; i < spikes * 2; i++) {
+          const radius = i % 2 === 0 ? r * 1.05 : r * 0.72;
+          const angle = (Math.PI * i) / spikes - Math.PI / 2;
+          ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
+        ctx.closePath();
+        break;
+      }
+      case 'wanderer':
+        roundedRectPath(ctx, -r * 0.85, -r * 0.85, r * 1.7, r * 1.7, r * 0.35);
+        break;
+      case 'ambusher':
+        ctx.moveTo(0, -r * 1.05);
+        ctx.lineTo(r * 1.02, r * 0.8);
+        ctx.lineTo(-r * 1.02, r * 0.8);
+        ctx.closePath();
+        break;
+      default:
+        assertNever(enemy.kind);
+    }
+    ctx.fillStyle = theme.enemies[enemy.kind];
+    ctx.fill();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1, s * 0.06);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+
+    // 眼睛：瞳孔往前進方向偏；三角形的眼睛往下放，才放得進去
+    const eyeY = enemy.kind === 'ambusher' ? r * 0.28 : -r * 0.05;
+    const look = enemy.dir === null ? { x: 0, y: 0 } : DIRECTION_VECTORS[enemy.dir];
+    for (const side of [-1, 1]) {
+      const ex = side * r * 0.32;
+      ctx.beginPath();
+      ctx.arc(ex, eyeY, r * 0.24, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex + look.x * r * 0.1, eyeY + look.y * r * 0.1, r * 0.12, 0, Math.PI * 2);
+      ctx.fillStyle = theme.ink;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** 除錯：敵人的目標格（虛線圓圈），並從敵人拉一條細線過去（§12.6） */
+  private drawEnemyTarget(enemy: EnemyView, target: Tile): void {
+    const { ctx, theme } = this;
+    const s = this.tileSize;
+    const from = this.center(enemy);
+    const to = this.center(target);
+    ctx.save();
+    ctx.strokeStyle = theme.enemies[enemy.kind];
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([s * 0.12, s * 0.08]);
+    ctx.beginPath();
+    ctx.arc(to.x, to.y, s * 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** 以 (x, y) 為原點、旋轉 angle 之後畫圖，畫完還原 */

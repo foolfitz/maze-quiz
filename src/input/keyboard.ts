@@ -40,7 +40,8 @@ export function attachKeyboard(target: Window, handlers: KeyboardHandlers): () =
   return () => target.removeEventListener('keydown', onKeyDown);
 }
 
-function isTextInput(target: EventTarget | null): boolean {
+/** 事件目標是不是可以輸入文字的元素（input、textarea、contenteditable） */
+export function isTextInput(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||

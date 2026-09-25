@@ -1,4 +1,14 @@
-import { CONFIG } from '../config';
+import { CONFIG, DIFFICULTY_TABLE } from '../config';
+import {
+  createEnemies,
+  DEFAULT_ENEMY_CONFIG,
+  resetEnemy,
+  updateEnemy,
+  type DifficultyRow,
+  type Enemy,
+  type EnemyConfig,
+  type EnemyContext,
+} from './enemies';
 import type { Passable } from './grid';
 import {
   DEFAULT_MAZE_CONFIG,
@@ -19,8 +29,8 @@ import {
   type PlayerConfig,
   type TurnResult,
 } from './player';
-import type { GameOptions, Question, QuizFile } from './quiz';
-import { createRng, hashSeed } from './rng';
+import type { Difficulty, GameOptions, Question, QuizFile } from './quiz';
+import { createRng, hashSeed, type Rng } from './rng';
 import { assertNever, type Direction, type Phase, type QuestionResult } from './types';
 
 // ─── 設定 ────────────────────────────────────────────────────
@@ -36,14 +46,26 @@ export interface TimingConfig {
 export interface GameConfig {
   readonly maze: MazeConfig;
   readonly player: PlayerConfig;
+  readonly enemy: EnemyConfig;
+  readonly difficulties: Readonly<Record<Difficulty, DifficultyRow>>;
+  readonly collisionDistance: number; // 格；玩家與敵人中心距離小於此值即碰撞
   readonly timing: TimingConfig;
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   maze: DEFAULT_MAZE_CONFIG,
   player: DEFAULT_PLAYER_CONFIG,
+  enemy: DEFAULT_ENEMY_CONFIG,
+  difficulties: DIFFICULTY_TABLE,
+  collisionDistance: CONFIG.collisionDistance,
   timing: CONFIG.timing,
 };
+
+/**
+ * 敵人亂數序列的第三個種子值。迷宮用 hashSeed(seed, levelIndex, attempt)，attempt 從 0 開始，
+ * 用 -1 就不會和任何一次嘗試的迷宮種子相同；敵人怎麼走也不會影響迷宮長什麼樣子。
+ */
+const ENEMY_RNG_STREAM = -1;
 
 // ─── 狀態 ────────────────────────────────────────────────────
 
@@ -58,6 +80,10 @@ export interface Level {
   /** 玩家剛走進的園區（顯示 ✓ ✗ 用）；回到 playing 時清掉 */
   enteredZone: number | null;
   readonly wrongChoiceIds: string[]; // 這一題答錯過的選項，依先後順序
+  readonly enemies: readonly Enemy[]; // 物件本身會被 updateEnemy 就地修改
+  readonly enemyRng: Rng; // 敵人的隨機決策；和迷宮的亂數序列分開
+  /** 重生後的無敵時間還剩多久（§10）；0 表示不在無敵狀態 */
+  invulnerableMs: number;
 }
 
 export interface GameState {
@@ -74,6 +100,8 @@ export interface GameState {
   elapsedMs: number;
   lives: number;
   readonly results: QuestionResult[];
+  /** 除錯快捷鍵 I 切換的無敵（§12.6），和重生後的無敵時間分開 */
+  debugInvincible: boolean;
 }
 
 export function levelMaze(level: Level): Maze {
@@ -109,6 +137,7 @@ export function createGame(
     elapsedMs: 0,
     lives: options.lives,
     results: [],
+    debugInvincible: false,
   };
 }
 
@@ -150,6 +179,20 @@ export function stepGame(state: GameState, dtMs: number): void {
       state.elapsedMs += dtMs;
       updatePlayer(level.player, dtMs, playerPassable(levelMaze(level)), config.player);
       judgeZone(state, level);
+      if (state.phase.kind !== 'playing') return; // 走進園區了，全場靜止
+
+      level.invulnerableMs = Math.max(0, level.invulnerableMs - dtMs);
+      const row = difficultyRow(state);
+      const ctx: EnemyContext = {
+        maze: levelMaze(level),
+        player: level.player,
+        rng: level.enemyRng,
+        speedTilesPerSec: config.player.speedTilesPerSec * row.enemySpeedRatio,
+        smartRatio: row.smartRatio,
+        ambushLookahead: config.enemy.ambushLookahead,
+      };
+      for (const enemy of level.enemies) updateEnemy(enemy, dtMs, ctx);
+      if (!isInvulnerable(state, level) && touchingEnemy(level, config.collisionDistance)) loseLife(state, level);
       return;
     }
 
@@ -162,10 +205,12 @@ export function stepGame(state: GameState, dtMs: number): void {
     }
 
     case 'lifeLost': {
-      // M5 才會進到這個狀態
+      // 受傷動畫期間全場靜止，但照樣計時（§5.2）
       state.elapsedMs += dtMs;
       const remainingMs = phase.remainingMs - dtMs;
-      state.phase = remainingMs > 0 ? { ...phase, remainingMs } : { kind: 'playing' };
+      if (remainingMs > 0) state.phase = { ...phase, remainingMs };
+      else if (level !== null && state.lives > 0) respawn(state, level);
+      else endGame(state);
       return;
     }
 
@@ -180,6 +225,31 @@ export function stepGame(state: GameState, dtMs: number): void {
     default:
       assertNever(phase);
   }
+}
+
+/** 「沒有命了」或「時間到」畫面按「看成績」 */
+export function viewResults(state: GameState): void {
+  if (state.phase.kind === 'gameOver' || state.phase.kind === 'timeUp') state.phase = { kind: 'results' };
+}
+
+/** 目前難度的敵人數量、速度與聰明程度 */
+export function difficultyRow(state: GameState): DifficultyRow {
+  return state.config.difficulties[state.options.difficulty];
+}
+
+/** 玩家現在碰到敵人會不會受傷：重生後的無敵時間，或除錯用的無敵 */
+export function isInvulnerable(state: GameState, level: Level): boolean {
+  return state.debugInvincible || level.invulnerableMs > 0;
+}
+
+/** 除錯快捷鍵 K：扣一條命，和碰到敵人一樣（§12.6）；無敵時也有效 */
+export function debugLoseLife(state: GameState): void {
+  if (state.phase.kind === 'playing' && state.level !== null) loseLife(state, state.level);
+}
+
+/** 除錯快捷鍵 I：切換無敵（§12.6） */
+export function debugToggleInvincible(state: GameState): void {
+  state.debugInvincible = !state.debugInvincible;
 }
 
 /** 除錯快捷鍵 N：直接過關，當作走進了正確答案區（§12.6） */
@@ -205,6 +275,7 @@ function enterLevel(state: GameState, levelIndex: number): void {
   if (!isZoneCount(zoneCount)) throw new Error(`題目 ${question.id} 的選項數 ${zoneCount} 不在 2–6 之間`);
 
   const mazeResult = generateLevelMaze(state.seed, levelIndex, zoneCount, state.config.maze);
+  const { enemyCount } = difficultyRow(state);
   state.levelIndex = levelIndex;
   state.level = {
     questionIndex,
@@ -214,6 +285,10 @@ function enterLevel(state: GameState, levelIndex: number): void {
     sealed: mazeResult.maze.zones.map(() => false),
     enteredZone: null,
     wrongChoiceIds: [],
+    // 每關開始時敵人先在出生點等待 releaseDelayMs（§9）
+    enemies: createEnemies(mazeResult.maze.enemySpawns, enemyCount, state.config.enemy.releaseDelayMs),
+    enemyRng: createRng(hashSeed(state.seed, levelIndex, ENEMY_RNG_STREAM)),
+    invulnerableMs: 0,
   };
   state.phase = { kind: 'levelIntro', remainingMs: state.config.timing.levelIntroMs };
 }
@@ -228,9 +303,7 @@ function judgeZone(state: GameState, level: Level): void {
   if (choice === undefined) return;
 
   // 全場靜止
-  level.player.dir = null;
-  level.player.pendingDir = null;
-  level.player.pendingMs = 0;
+  stopPlayer(level.player);
 
   if (choice.correct) {
     completeLevel(state, level, zoneIndex);
@@ -267,4 +340,53 @@ function sealEnteredZone(state: GameState, level: Level): void {
   level.player.dir = null;
   level.enteredZone = null;
   state.phase = { kind: 'playing' };
+}
+
+/** 玩家與任一敵人的中心距離小於 collisionDistance（§10） */
+function touchingEnemy(level: Level, collisionDistance: number): boolean {
+  const { player } = level;
+  return level.enemies.some((enemy) => Math.hypot(enemy.x - player.x, enemy.y - player.y) < collisionDistance);
+}
+
+/**
+ * 受傷：生命減一，全場靜止播放受傷動畫（§10）。
+ * 玩家停在被撞到的位置，方向等重生時才清掉；除錯鍵 K 在無敵期間扣命時，剩下的無敵時間也一併取消。
+ */
+function loseLife(state: GameState, level: Level): void {
+  state.lives = Math.max(0, state.lives - 1);
+  level.invulnerableMs = 0;
+  state.phase = { kind: 'lifeLost', remainingMs: state.config.timing.lifeLostMs };
+}
+
+/** 還有命：玩家回起點並暫時無敵，敵人回出生點重新等待；封住的園區維持封住（§10） */
+function respawn(state: GameState, level: Level): void {
+  const { start } = levelMaze(level);
+  level.player.x = start.x;
+  level.player.y = start.y;
+  stopPlayer(level.player);
+  for (const enemy of level.enemies) resetEnemy(enemy, state.config.enemy.releaseDelayMs);
+  level.invulnerableMs = state.config.timing.invulnerableMs;
+  state.phase = { kind: 'playing' };
+}
+
+/**
+ * 命用完：目前這題與之後的題目都記為未作答（§10）。
+ * 目前這題答錯過的選項照樣保留，結算回顧時看得到走進過哪些園區。
+ */
+function endGame(state: GameState): void {
+  const current = state.level;
+  for (let levelIndex = state.levelIndex; levelIndex < state.order.length; levelIndex++) {
+    const questionIndex = state.order[levelIndex];
+    const question = questionIndex === undefined ? undefined : state.quiz.questions[questionIndex];
+    if (question === undefined) continue;
+    const wrongChoiceIds = levelIndex === state.levelIndex && current !== null ? [...current.wrongChoiceIds] : [];
+    state.results.push({ questionId: question.id, status: 'unanswered', wrongChoiceIds });
+  }
+  state.phase = { kind: 'gameOver' };
+}
+
+function stopPlayer(player: Player): void {
+  player.dir = null;
+  player.pendingDir = null;
+  player.pendingMs = 0;
 }

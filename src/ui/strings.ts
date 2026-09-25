@@ -21,6 +21,11 @@ export const STRINGS = {
   // 遊戲畫面
   questionNumber: (current: number, total: number) => `第 ${current} / ${total} 題`,
   ready: '預備',
+  lives: (count: number) => `剩下 ${count} 條命`,
+
+  // 沒有命了（§5.1）
+  gameOver: '沒有命了',
+  viewResults: '看成績',
 
   // 圖片來源畫面（§13.4）
   creditsIntro: '照片依照各自的授權使用，並經過縮小與轉檔。點作品名稱可以看原始檔案與完整說明。',
@@ -37,6 +42,8 @@ export const STRINGS = {
   // 載入失敗的原因
   invalidQuizParam: (value: string) =>
     `網址參數 quiz 的值「${value}」不正確：只能使用英文字母、數字、- 和 _。`,
+  invalidDifficultyParam: (value: string) =>
+    `網址參數 difficulty 的值「${value}」不正確：只能是 1 到 5 的整數（1 最簡單）。`,
   quizNotFound: (url: string, status: number) =>
     `找不到題組檔案 ${url}（HTTP ${status}）。請確認網址參數 quiz 有沒有打錯，` +
     `或檔案是否放在 public/quizzes/<題組代號>/quiz.json。`,
@@ -59,7 +66,10 @@ export const STRINGS = {
     ratio: (ratio: string) => `最遠 ÷ 最近 = ${ratio}`,
     fallback: '⚠ 迷宮沒有完全符合條件，採用最接近的一張：',
     warnings: (count: number) => `題組警告（${count}）`,
-    shortcuts: '快捷鍵　N：直接過關',
+    shortcuts: '快捷鍵　N：直接過關　K：扣一條命　I：切換無敵',
+    difficulty: (difficulty: number, count: number, speed: number, smart: number) =>
+      `難度 ${difficulty}：敵人 ${count} 隻，速度 ${speed}×，聰明程度 ${smart}`,
+    invincible: (on: boolean) => `無敵（I）：${on ? '開' : '關'}`,
     violation: {
       disconnected: (count: number) => `有 ${count} 格地板走不到`,
       badDoor: (zone: string) => `答案區「${zone}」的門不正確`,

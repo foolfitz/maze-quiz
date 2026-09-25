@@ -4,18 +4,35 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   debugCompleteLevel,
+  debugLoseLife,
+  debugToggleInvincible,
+  isInvulnerable,
   levelMaze,
   startGame,
   steer,
   stepGame,
+  viewResults,
+  type GameConfig,
   type GameState,
   type Level,
 } from './game';
+import type { Enemy } from './enemies';
 import { opposite } from './grid';
-import type { GameOptions, QuizFile } from './quiz';
+import type { Difficulty, GameOptions, QuizFile } from './quiz';
 
 const STEP_MS = 1000 / 60;
 const { timing } = DEFAULT_GAME_CONFIG;
+const releaseDelayMs = DEFAULT_GAME_CONFIG.enemy.releaseDelayMs;
+
+/** 判定相關的測試不放敵人，免得玩家在測試途中被撞到 */
+const NO_ENEMIES: GameConfig = {
+  ...DEFAULT_GAME_CONFIG,
+  difficulties: { 1: noEnemy(1), 2: noEnemy(2), 3: noEnemy(3), 4: noEnemy(4), 5: noEnemy(5) },
+};
+
+function noEnemy(difficulty: Difficulty) {
+  return { ...DEFAULT_GAME_CONFIG.difficulties[difficulty], enemyCount: 0 };
+}
 
 const quiz: QuizFile = {
   schemaVersion: 1,
@@ -54,14 +71,19 @@ function run(state: GameState, durationMs: number): void {
   for (let i = 0; i < steps; i++) stepGame(state, STEP_MS);
 }
 
+/** 一直前進到狀態不再是 kind（例如受傷動畫播完、剛好重生的那一刻） */
+function runWhile(state: GameState, kind: GameState['phase']['kind'], maxMs = 10_000): void {
+  for (let t = 0; state.phase.kind === kind && t < maxMs; t += STEP_MS) stepGame(state, STEP_MS);
+}
+
 function currentLevel(state: GameState): Level {
   if (state.level === null) throw new Error('目前沒有關卡');
   return state.level;
 }
 
 /** 開始遊戲並跳過「預備」 */
-function startPlaying(seed = 1): GameState {
-  const state = createGame(quiz, options, seed);
+function startPlaying(seed = 1, config: GameConfig = NO_ENEMIES, gameOptions: GameOptions = options): GameState {
+  const state = createGame(quiz, gameOptions, seed, config);
   startGame(state);
   run(state, timing.levelIntroMs);
   expect(state.phase.kind).toBe('playing');
@@ -206,7 +228,7 @@ describe('答對', () => {
 
 describe('計時（§5.2）', () => {
   it('playing 與 wrongFeedback 計時，levelIntro 與 levelComplete 不計時', () => {
-    const state = createGame(quiz, options, 1);
+    const state = createGame(quiz, options, 1, NO_ENEMIES);
     startGame(state);
     run(state, timing.levelIntroMs);
     expect(state.elapsedMs).toBe(0);
@@ -258,5 +280,256 @@ describe('除錯快捷鍵', () => {
     debugCompleteLevel(state);
     expect(state.phase.kind).toBe('levelComplete');
     expect(currentLevel(state).enteredZone).toBe(zoneOf(state, 'q1-a'));
+  });
+});
+
+// ─── M5 敵人與生命 ───────────────────────────────────────────
+
+function firstEnemy(state: GameState): Enemy {
+  const enemy = currentLevel(state).enemies[0];
+  if (enemy === undefined) throw new Error('沒有敵人');
+  return enemy;
+}
+
+/** 把第一隻敵人放到玩家身上，前進一步 */
+function hitByEnemy(state: GameState): void {
+  const { player } = currentLevel(state);
+  Object.assign(firstEnemy(state), { x: player.x, y: player.y });
+  stepGame(state, STEP_MS);
+}
+
+describe('敵人（§9）', () => {
+  it.each([
+    [1, ['chaser']],
+    [3, ['chaser', 'wanderer']],
+    [5, ['chaser', 'wanderer', 'ambusher']],
+  ] as const)('難度 %i 的敵人：%j', (difficulty, kinds) => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, difficulty });
+    const level = currentLevel(state);
+    expect(level.enemies.map((e) => e.kind)).toEqual(kinds);
+    level.enemies.forEach((enemy, i) => expect(enemy.spawn).toEqual(levelMaze(level).enemySpawns[i]));
+  });
+
+  it('同一個種子在不同難度下是同一張迷宮', () => {
+    const easy = startPlaying(3, DEFAULT_GAME_CONFIG, { ...options, difficulty: 1 });
+    const hard = startPlaying(3, DEFAULT_GAME_CONFIG, { ...options, difficulty: 5 });
+    expect(levelMaze(currentLevel(easy)).grid).toEqual(levelMaze(currentLevel(hard)).grid);
+  });
+
+  it('預備期間不動；開始後先等 releaseDelayMs 才出發', () => {
+    const state = createGame(quiz, options, 1);
+    startGame(state);
+    const enemy = firstEnemy(state);
+    const spawn = { x: enemy.x, y: enemy.y };
+    run(state, timing.levelIntroMs);
+    expect({ x: enemy.x, y: enemy.y }).toEqual(spawn);
+    run(state, releaseDelayMs - 100);
+    expect({ x: enemy.x, y: enemy.y }).toEqual(spawn);
+    run(state, 300);
+    expect({ x: enemy.x, y: enemy.y }).not.toEqual(spawn);
+  });
+
+  it('速度是玩家速度乘上難度的 enemySpeedRatio', () => {
+    for (const difficulty of [1, 5] as const) {
+      const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, difficulty });
+      run(state, releaseDelayMs);
+      const enemy = firstEnemy(state);
+      // 同一隻敵人連續走 0.1 秒（不會在這麼短的時間內回頭）
+      const before = { x: enemy.x, y: enemy.y };
+      Object.assign(currentLevel(state), { invulnerableMs: 10_000 });
+      run(state, 100);
+      const moved = Math.abs(enemy.x - before.x) + Math.abs(enemy.y - before.y);
+      const ratio = DEFAULT_GAME_CONFIG.difficulties[difficulty].enemySpeedRatio;
+      expect(moved).toBeCloseTo(DEFAULT_GAME_CONFIG.player.speedTilesPerSec * ratio * 0.1, 2);
+    }
+  });
+});
+
+describe('受傷與重生（§10）', () => {
+  it('碰到敵人：生命減一，進入 lifeLost，全場靜止', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    hitByEnemy(state);
+    expect(state.lives).toBe(options.lives - 1);
+    expect(state.phase).toMatchObject({ kind: 'lifeLost' });
+    expect(steer(state, 'up')).toBeNull();
+
+    const level = currentLevel(state);
+    const snapshot = JSON.stringify([level.player, level.enemies]);
+    run(state, timing.lifeLostMs - 100);
+    expect(JSON.stringify([level.player, level.enemies])).toBe(snapshot);
+  });
+
+  it('中心距離小於 collisionDistance 才算碰到', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    const level = currentLevel(state);
+    const enemy = firstEnemy(state);
+    const { collisionDistance } = DEFAULT_GAME_CONFIG;
+    Object.assign(enemy, { x: level.player.x + collisionDistance + 0.01, y: level.player.y });
+    stepGame(state, STEP_MS);
+    expect(state.phase.kind).toBe('playing');
+    Object.assign(enemy, { x: level.player.x + collisionDistance - 0.01, y: level.player.y });
+    stepGame(state, STEP_MS);
+    expect(state.phase.kind).toBe('lifeLost');
+  });
+
+  it('lifeLost 期間照樣計時（§5.2）', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    hitByEnemy(state);
+    const before = state.elapsedMs;
+    run(state, 500);
+    expect(state.elapsedMs - before).toBeCloseTo(500, 0);
+  });
+
+  it('還有命：玩家回起點、敵人回出生點重新等待、玩家無敵，封住的園區維持封住', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    const zoneIndex = zoneOf(state, 'q1-b');
+    walkInto(state, zoneIndex);
+    run(state, timing.wrongFeedbackMs + STEP_MS);
+    const level = currentLevel(state);
+    expect(level.sealed[zoneIndex]).toBe(true);
+
+    hitByEnemy(state);
+    runWhile(state, 'lifeLost');
+    const maze = levelMaze(level);
+    expect(state.phase.kind).toBe('playing');
+    expect(level.player).toMatchObject({ x: maze.start.x, y: maze.start.y, dir: null, pendingDir: null });
+    for (const enemy of level.enemies) {
+      expect(enemy).toMatchObject({ x: enemy.spawn.x, y: enemy.spawn.y, dir: null, releaseMs: releaseDelayMs });
+    }
+    expect(level.invulnerableMs).toBe(timing.invulnerableMs);
+    expect(level.sealed[zoneIndex]).toBe(true);
+    expect(maze.grid.isFloor(maze.zones[zoneIndex]?.door ?? maze.start)).toBe(false);
+  });
+
+  it('無敵期間碰到敵人不會受傷，無敵結束後會', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    hitByEnemy(state);
+    runWhile(state, 'lifeLost');
+    const level = currentLevel(state);
+    expect(isInvulnerable(state, level)).toBe(true);
+
+    // 每一步都把敵人放到玩家身上，直到受傷為止
+    let steps = 0;
+    while (state.phase.kind === 'playing' && steps < 1000) {
+      hitByEnemy(state);
+      steps++;
+    }
+    expect(steps * STEP_MS).toBeCloseTo(timing.invulnerableMs, -2);
+    expect(isInvulnerable(state, level)).toBe(false);
+    expect(state.phase.kind).toBe('lifeLost');
+    expect(state.lives).toBe(options.lives - 2);
+  });
+
+  it('重生後敵人在出生點等 releaseDelayMs 才出發', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    run(state, releaseDelayMs + 500);
+    debugLoseLife(state);
+    runWhile(state, 'lifeLost');
+    const level = currentLevel(state);
+    const positions = (): string => JSON.stringify(level.enemies.map((e) => [e.x, e.y]));
+    const atSpawn = JSON.stringify(level.enemies.map((e) => [e.spawn.x, e.spawn.y]));
+    expect(positions()).toBe(atSpawn);
+    run(state, releaseDelayMs - 100);
+    expect(positions()).toBe(atSpawn);
+    run(state, 300);
+    expect(positions()).not.toBe(atSpawn);
+  });
+
+  it('答錯回饋與過關期間敵人不動', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    debugToggleInvincible(state); // 走向園區途中不要被撞
+    run(state, releaseDelayMs + 500);
+    const level = currentLevel(state);
+    const positions = (): string => JSON.stringify(level.enemies.map((e) => [e.x, e.y, e.dir]));
+
+    walkInto(state, zoneOf(state, 'q1-b'));
+    expect(state.phase.kind).toBe('wrongFeedback');
+    const atFeedback = positions();
+    run(state, timing.wrongFeedbackMs - 100);
+    expect(positions()).toBe(atFeedback);
+
+    run(state, 200);
+    walkInto(state, zoneOf(state, 'q1-a'));
+    expect(state.phase.kind).toBe('levelComplete');
+    const atComplete = positions();
+    run(state, timing.levelCompleteMs - 100);
+    expect(positions()).toBe(atComplete);
+  });
+
+  it('命歸零 → gameOver；目前這題與之後的題目記為未作答', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, lives: 2 });
+    walkInto(state, zoneOf(state, 'q1-c'));
+    run(state, timing.wrongFeedbackMs + STEP_MS);
+
+    hitByEnemy(state);
+    runWhile(state, 'lifeLost');
+    expect(state.phase.kind).toBe('playing');
+    run(state, timing.invulnerableMs);
+    hitByEnemy(state);
+    expect(state.lives).toBe(0);
+    run(state, timing.lifeLostMs - 100);
+    expect(state.phase.kind).toBe('lifeLost');
+    run(state, 200);
+
+    expect(state.phase.kind).toBe('gameOver');
+    expect(state.results).toEqual([
+      { questionId: 'q1', status: 'unanswered', wrongChoiceIds: ['q1-c'] },
+      { questionId: 'q2', status: 'unanswered', wrongChoiceIds: [] },
+    ]);
+    // gameOver 之後不再計時，按「看成績」進入結算
+    const elapsed = state.elapsedMs;
+    run(state, 1000);
+    expect(state.elapsedMs).toBe(elapsed);
+    viewResults(state);
+    expect(state.phase.kind).toBe('results');
+  });
+
+  it('答對過的題目保留結果，只有目前與之後的題目記為未作答', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG, { ...options, lives: 1 });
+    walkInto(state, zoneOf(state, 'q1-a'));
+    run(state, timing.levelCompleteMs + timing.levelIntroMs + STEP_MS * 2);
+    hitByEnemy(state);
+    run(state, timing.lifeLostMs + STEP_MS);
+    expect(state.phase.kind).toBe('gameOver');
+    expect(state.results.map((r) => [r.questionId, r.status])).toEqual([
+      ['q1', 'firstTry'],
+      ['q2', 'unanswered'],
+    ]);
+  });
+
+  it('viewResults 只在 gameOver 與 timeUp 有效', () => {
+    const state = startPlaying();
+    viewResults(state);
+    expect(state.phase.kind).toBe('playing');
+  });
+});
+
+describe('除錯快捷鍵（M5）', () => {
+  it('K 扣一條命，和碰到敵人一樣', () => {
+    const state = startPlaying();
+    debugLoseLife(state);
+    expect(state.lives).toBe(options.lives - 1);
+    expect(state.phase.kind).toBe('lifeLost');
+    runWhile(state, 'lifeLost');
+    expect(isInvulnerable(state, currentLevel(state))).toBe(true);
+  });
+
+  it('K 只在 playing 時有效', () => {
+    const state = createGame(quiz, options, 1);
+    startGame(state);
+    debugLoseLife(state);
+    expect(state.phase.kind).toBe('levelIntro');
+    expect(state.lives).toBe(options.lives);
+  });
+
+  it('I 切換無敵：碰到敵人不會受傷，再按一次恢復', () => {
+    const state = startPlaying(1, DEFAULT_GAME_CONFIG);
+    debugToggleInvincible(state);
+    hitByEnemy(state);
+    expect(state.phase.kind).toBe('playing');
+    expect(state.lives).toBe(options.lives);
+    debugToggleInvincible(state);
+    hitByEnemy(state);
+    expect(state.phase.kind).toBe('lifeLost');
   });
 });
