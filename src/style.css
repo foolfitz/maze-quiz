@@ -1,4 +1,10 @@
 /* 顏色與 render/theme.ts 的 token 相同（§12.3） */
+/* 整頁不允許兩指縮放與雙擊縮放，但保留捲動（圖片來源清單要捲）；
+   touch-action 會和祖先的值取交集，所以設在 html 上就對所有元素有效 */
+html {
+  touch-action: pan-x pan-y;
+}
+
 :root {
   --hedge: #2f5e3b;
   --path: #ead9a6;
@@ -210,6 +216,8 @@ progress {
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* 遊戲畫面（含狀態列與題目列）不捲動也不縮放：手指碰到題目列時也不會把畫面拉大 */
+  touch-action: none;
 }
 
 .game[hidden] {

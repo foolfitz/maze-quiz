@@ -22,6 +22,7 @@ import { computeScore } from './core/scoring';
 import type { Direction, Phase } from './core/types';
 import { attachKeyboard, isTextInput } from './input/keyboard';
 import { attachPointer } from './input/pointer';
+import { preventPinchZoom } from './input/zoomGuard';
 import { loadQuiz, type LoadedQuiz } from './loader';
 import { startLoop } from './loop';
 import {
@@ -52,6 +53,8 @@ import { parseUrlParams, quizJsonPath, type UrlParams } from './urlParams';
 /** 進入點：讀網址參數 → 載入題組 → 顯示標題畫面或錯誤畫面 */
 async function start(): Promise<void> {
   const overlay = requireElement('overlay', HTMLDivElement);
+  // 平板上兩指誤觸會把畫面放大，放大後就看不到題目
+  preventPinchZoom(document);
 
   const parsed = parseUrlParams(new URLSearchParams(window.location.search));
   if (!parsed.ok) {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Grid } from './grid';
-import { createPlayer, requestDirection, updatePlayer, type Player, type PlayerConfig } from './player';
+import {
+  createPlayer,
+  DEFAULT_PLAYER_CONFIG,
+  requestDirection,
+  updatePlayer,
+  type Player,
+  type PlayerConfig,
+} from './player';
 
 /** 用字串畫格子：# 是牆，. 是地板 */
 function gridFrom(rows: readonly string[]): Grid {
@@ -201,5 +208,47 @@ describe('高速移動', () => {
         expect(T_JUNCTION.isFloor({ x: Math.round(player.x), y: Math.round(player.y) })).toBe(true);
       }
     }
+  });
+});
+
+describe('預設設定（試玩後放寬，見 DECISIONS.md）', () => {
+  // 第 1 列是橫向走廊，x = 1、3、5 可以往下轉
+  const JUNCTIONS = gridFrom([
+    '#######', //
+    '#.....#',
+    '#.#.#.#',
+    '#.....#',
+    '#######',
+  ]);
+  const passable = (t: { x: number; y: number }): boolean => JUNCTIONS.isFloor(t);
+
+  function runDefault(player: Player, durationMs: number): void {
+    for (let t = 0; t < durationMs; t += STEP_MS) updatePlayer(player, STEP_MS, passable);
+  }
+
+  it('可以轉彎的格子至少相隔 2 格，寬限時間走不到下一個路口', () => {
+    const { speedTilesPerSec, inputGraceMs, turnTolerance } = DEFAULT_PLAYER_CONFIG;
+    expect((speedTilesPerSec * inputGraceMs) / 1000).toBeLessThan(2 - turnTolerance);
+  });
+
+  it('過了路口 0.45 格以內才按：吸回路口並轉彎', () => {
+    const player: Player = { ...createPlayer({ x: 1, y: 1 }), x: 3.44, dir: 'right' };
+    expect(requestDirection(player, 'down', passable)).toBe('turned');
+    expect(player).toMatchObject({ x: 3, y: 1, dir: 'down' });
+  });
+
+  it('提早 1.3 格按：寬限時間內到達路口就轉', () => {
+    const player: Player = { ...createPlayer({ x: 1, y: 1 }), x: 1.7, dir: 'right' };
+    expect(requestDirection(player, 'down', passable)).toBe('queued');
+    runDefault(player, 500);
+    expect(player.x).toBe(3);
+    expect(player.y).toBeGreaterThan(1);
+  });
+
+  it('剛過路口才按（已經超過吸附範圍）：不會帶到下一個路口自動轉彎', () => {
+    const player: Player = { ...createPlayer({ x: 1, y: 1 }), x: 1.5, dir: 'right' };
+    expect(requestDirection(player, 'down', passable)).toBe('queued');
+    runDefault(player, 1500);
+    expect(player).toMatchObject({ x: 5, y: 1, dir: null });
   });
 });

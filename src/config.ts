@@ -13,8 +13,9 @@ export const CONFIG = {
   },
   player: {
     speedTilesPerSec: 4.5,
-    turnTolerance: 0.3, // 格；距格子中心多近可以轉向
-    inputGraceMs: 150, // 轉向指令的暫存時間
+    // 附錄 A 原本是 0.3 格與 150 ms；平板試玩時轉彎太難，照 §7.2 放寬（見 DECISIONS.md）
+    turnTolerance: 0.45, // 格；距格子中心多近可以轉向（吸附到路口）
+    inputGraceMs: 300, // 轉向指令的暫存時間；不可以長到走得到下一個路口，否則就變成自動轉彎
     pointerDeadZoneTiles: 0.6,
   },
   enemy: {

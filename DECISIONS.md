@@ -147,3 +147,8 @@
 - `Enemy` 是以 `kind` 區分的 discriminated union，只有 wanderer 有 `goal`（驗收時發現）—— 其他兩種敵人不會有用不到的欄位。
 - 玩家與敵人「走到下一個格子中心」的程式合併成 `grid.ts` 的 `advanceToNextCenter()`（驗收時發現）。
 - 除錯快捷鍵在輸入框裡不觸發（驗收時發現）—— M6 排行榜要輸入名字，打到 i 不該切換無敵。
+
+## M5 試玩回饋
+
+- `turnTolerance` 從 0.3 放寬到 0.45 格、`inputGraceMs` 從 150 放寬到 300 ms（附錄 A 的預設值）—— 團隊在平板上試玩時覺得轉彎太難；照 §7.2 先調大寬限時間，同時放寬吸附到路口的範圍。300 ms 以玩家速度只走 1.35 格，比「剛過路口、超過吸附範圍」到下一個路口的距離（2 − 0.45 = 1.55 格）短，所以不會變成「到下一個路口自動轉彎」；`player.test.ts` 會檢查這個條件。
+- 整頁設 `touch-action: pan-x pan-y`、遊戲畫面設 `touch-action: none`，並用 Safari 的 `gesturestart`／`gesturechange` 與兩指 `touchmove` 再擋一次縮放 —— 試玩時兩指誤觸常把畫面放大，放大後就看不到題目；原本只有迷宮舞台設了 `touch-action: none`，手指碰到題目列或狀態列時照樣會縮放。單指捲動保留（圖片來源清單要捲）；需要放大畫面的使用者可以用系統的放大鏡功能。
