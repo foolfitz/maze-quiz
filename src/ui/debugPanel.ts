@@ -46,12 +46,14 @@ export function renderDebugPanel(root: HTMLElement, info: DebugPanelInfo): void 
     el('p', { className: 'debug-muted', text: T.shortcuts }),
   );
 
-  root.replaceChildren(
-    el('details', {
-      attrs: { open: '' },
-      children: [el('summary', { text: T.title }), ...children],
-    }),
-  );
+  // 換關時保留使用者收合或展開的狀態
+  const [wasOpen, warningsWereOpen] = [...root.querySelectorAll('details')].map((d) => d.open);
+  const panel = el('details', { children: [el('summary', { text: T.title }), ...children] });
+  panel.open = wasOpen ?? true;
+  const warningsDetails = panel.querySelector('details');
+  if (warningsDetails !== null) warningsDetails.open = warningsWereOpen ?? false;
+
+  root.replaceChildren(panel);
   root.hidden = false;
 }
 

@@ -48,7 +48,8 @@ describe('種子 1–200 × k = 2–6', () => {
     }
   });
 
-  it('目前的參數下，全部都不需要退而求其次', () => {
+  // 只保證這個範圍（種子 1–200、第 1 關）；其他種子仍可能極少數用到「最接近的一張」，那是規格允許的
+  it('目前的參數下，這個範圍全部都不需要退而求其次', () => {
     const fallbacks = results.filter(({ result }) => result.violations.length > 0);
     expect(fallbacks.map(({ seed, k, result }) => `seed=${seed} k=${k}: ${kinds(result.violations)}`)).toEqual([]);
   });
@@ -83,11 +84,12 @@ describe('種子 1–200 × k = 2–6', () => {
     }
   });
 
-  it('園區以外沒有 2×2 的地板，也沒有死路', () => {
+  it('園區以外沒有 2×2 的地板，也沒有死路（門不算通路，門外那一格也要有兩條走廊）', () => {
     for (const { result } of results) {
       const maze = result.maze;
+      const corridor = (tile: Tile): boolean => isCorridor(maze, tile);
       for (const tile of corridorTiles(maze)) {
-        expect(maze.grid.countOpenNeighbors(tile)).toBeGreaterThanOrEqual(2);
+        expect(maze.grid.countOpenNeighbors(tile, corridor)).toBeGreaterThanOrEqual(2);
         const block = rectTiles({ x: tile.x, y: tile.y, width: 2, height: 2 });
         expect(block.every((t) => maze.grid.isFloor(t))).toBe(false);
       }
@@ -287,6 +289,19 @@ describe('checkMaze 抓得到每一種問題', () => {
       m.grid.set(step(cell, 'left'), 'floor');
     });
     expect(kinds(checkMaze(maze, config))).toContain('deadEnd');
+  });
+
+  it('門外那一格只接一條走廊（封門後就是死路）', () => {
+    const maze = modified((m) => {
+      const zone = m.zones[0];
+      if (zone === undefined) throw new Error('沒有園區');
+      // 把門外那一格除了門以外的走廊封到只剩一條
+      const exits = (['up', 'down', 'left', 'right'] as const)
+        .map((d) => step(zone.outside, d))
+        .filter((t) => isCorridor(m, t));
+      for (const t of exits.slice(1)) m.grid.set(t, 'wall');
+    });
+    expect(checkMaze(maze, config)).toContainEqual({ kind: 'deadEnd', at: valid.zones[0]?.outside });
   });
 
   it('不公平、離起點太近、出生點不夠', () => {

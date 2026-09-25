@@ -280,11 +280,13 @@ function placeZones(slots: readonly ZoneSlot[], config: MazeConfig, rng: Rng): Z
     tile.x <= config.width - 2 &&
     tile.y <= config.height - 2 &&
     !placed.some((other) => inRect(tile, other.rect));
+  const pockets = findPockets(config, isMazeCell);
+  const inPocket = (tile: Tile): boolean => pockets.has(tile.y * config.width + tile.x);
 
   return placed.map(({ slot, rect }) => {
-    // 角落的園區隨機選水平或垂直；選到的那一側開不了門（門外是別的園區）就換另一側
+    // 角落的園區隨機選水平或垂直；選到的那一側開不了門（門外是別的園區或凹槽）就換另一側
     for (const side of rng.shuffle(doorSideOptions(slot))) {
-      const candidates = doorCandidates(rect, side).filter((c) => isMazeCell(c.outside));
+      const candidates = doorCandidates(rect, side).filter((c) => isMazeCell(c.outside) && !inPocket(c.outside));
       if (candidates.length === 0) continue;
       // 同一側有幾個位置可以開門時，選門外最靠近中央的；一樣近就隨機
       const distance = (c: { outside: Tile }): number =>
@@ -295,6 +297,38 @@ function placeZones(slots: readonly ZoneSlot[], config: MazeConfig, rng: Rng): Z
     }
     throw new RangeError(`園區 ${slot} 找不到可以開門的位置`);
   });
+}
+
+/**
+ * 找出凹槽：能連到的其他 cell 不到兩個的 cell（例如夾在兩個園區之間、貼著外框的那一格）。
+ * 凹槽在移除死路時會被填成牆，所以門不能開向凹槽，否則門外那一格只剩一條走廊。
+ * 一個 cell 被判定為凹槽後，它的鄰居可能也變成凹槽，所以反覆檢查到沒有變化為止。
+ * 回傳格子索引（y * width + x）的集合。
+ */
+function findPockets(config: MazeConfig, isMazeCell: (tile: Tile) => boolean): Set<number> {
+  const index = (tile: Tile): number => tile.y * config.width + tile.x;
+  const cells: Tile[] = [];
+  for (let y = 1; y < config.height - 1; y += 2) {
+    for (let x = 1; x < config.width - 1; x += 2) {
+      if (isMazeCell({ x, y })) cells.push({ x, y });
+    }
+  }
+  const pockets = new Set<number>();
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const cell of cells) {
+      if (pockets.has(index(cell))) continue;
+      const exits = DIRECTIONS.filter((d) => {
+        const next = step(cell, d, 2);
+        return isMazeCell(next) && !pockets.has(index(next));
+      });
+      if (exits.length <= 1) {
+        pockets.add(index(cell));
+        changed = true;
+      }
+    }
+  }
+  return pockets;
 }
 
 /** recursive backtracker：在奇數格點（cell）上挖出完美迷宮，園區內部不挖 */
@@ -333,15 +367,15 @@ function carvePerfectMaze(grid: Grid, zones: readonly ZoneShape[], rng: Rng): vo
 }
 
 /**
- * 對每個死路（只有一個方向能走的走廊格）打通一面牆接到相鄰走廊，比例由 ratio 決定。
+ * 對每個死路（只有一個方向接到走廊的走廊格）打通一面牆接到相鄰走廊，比例由 ratio 決定。
+ * 門不算通路：敵人把門當成牆（§8），答錯封門後玩家也會被放在門外，所以門外那一格也要有兩條走廊。
  * 外框與園區的牆不能打通；如果某個死路四周只剩這種牆（例如夾在兩個園區之間的凹槽），
  * 就把它填回牆，再檢查它的鄰居是不是變成了新的死路。
  */
 function removeDeadEnds(grid: Grid, zones: readonly ZoneShape[], ratio: number, rng: Rng): void {
-  const floor: Passable = (tile) => grid.isFloor(tile);
+  const corridor: Passable = (tile) => grid.isFloor(tile) && !isZoneTile(zones, tile);
   const isOutside = (tile: Tile): boolean => zones.some((zone) => sameTile(zone.outside, tile));
-  const isDeadEnd = (tile: Tile): boolean =>
-    grid.isFloor(tile) && !isZoneTile(zones, tile) && grid.countOpenNeighbors(tile, floor) <= 1;
+  const isDeadEnd = (tile: Tile): boolean => corridor(tile) && grid.countOpenNeighbors(tile, corridor) <= 1;
   // 園區內部與外圍那圈牆
   const isProtected = (tile: Tile): boolean =>
     grid.onBorder(tile) || zones.some((zone) => inRect(tile, expandRect(zone.rect, 1)));
@@ -379,7 +413,7 @@ function removeDeadEnds(grid: Grid, zones: readonly ZoneShape[], ratio: number, 
 
     // 門外那一格不能填，不然園區會被封死
     if (isOutside(tile)) continue;
-    const exit = DIRECTIONS.find((d) => grid.isFloor(step(tile, d)));
+    const exit = DIRECTIONS.find((d) => corridor(step(tile, d)));
     grid.set(tile, 'wall');
     if (exit === undefined) continue;
     const passage = step(tile, exit);
@@ -387,6 +421,11 @@ function removeDeadEnds(grid: Grid, zones: readonly ZoneShape[], ratio: number, 
     queue.push({ tile: step(tile, exit, 2), forced: true });
   }
 }
+
+/** 公平性調整的搜尋上限 */
+const BALANCE_MAX_ITERATIONS = 200;
+const BALANCE_SIDEWAYS_MOVES = 30;
+const BALANCE_TABU_SIZE = 8;
 
 /**
  * 公平性調整：反覆試著「打通」或「封住」一面兩個 cell 之間的牆，每次挑讓差距分數最小的一步，
@@ -417,6 +456,7 @@ function balanceDistances(
   const neighborOffsets = [-width, width, -1, 1];
   const distances = new Int32Array(size);
   const queue = new Int32Array(size);
+  const openCount = (i: number): number => neighborOffsets.filter((offset) => corridor[i + offset] === 1).length;
 
   /** 從起點 BFS，回傳走得到的走廊格數 */
   const runBfs = (): number => {
@@ -469,38 +509,44 @@ function balanceDistances(
   runBfs();
   let current = score();
 
-  for (let iteration = 0; iteration < 200 && current > 0; iteration++) {
-    let bestScore = current;
-    let bestMoves: (typeof slots)[number][] = [];
+  type Slot = (typeof slots)[number];
+  // 卡在局部最佳時，允許走幾步「分數不變」的橫移（例如先打通一面牆，下一步才能封住另一面），
+  // 最近動過的牆暫時不能再動，避免來回打開又關上
+  let sidewaysLeft = BALANCE_SIDEWAYS_MOVES;
+  const recent: number[] = [];
+
+  for (let iteration = 0; iteration < BALANCE_MAX_ITERATIONS && current > 0; iteration++) {
+    let bestScore = Infinity;
+    let bestMoves: Slot[] = [];
 
     for (const slot of slots) {
-      if (corridor[slot.a] !== 1 || corridor[slot.b] !== 1) continue;
+      if (corridor[slot.a] !== 1 || corridor[slot.b] !== 1 || recent.includes(slot.index)) continue;
       const closing = corridor[slot.index] === 1;
-      if (closing) {
-        // 封完之後兩側的 cell 都還要有 2 條以上通路（門也算）
-        if (grid.countOpenNeighbors(slot.aTile) < 3 || grid.countOpenNeighbors(slot.bTile) < 3) continue;
-        corridor[slot.index] = 0;
-        const reached = runBfs();
-        const candidate = reached === corridorCount - 1 ? score() : Infinity;
-        corridor[slot.index] = 1;
-        if (candidate < bestScore) [bestScore, bestMoves] = [candidate, [slot]];
-        else if (candidate === bestScore && bestScore < current) bestMoves.push(slot);
-      } else {
-        corridor[slot.index] = 1;
-        runBfs();
-        const candidate = score();
-        corridor[slot.index] = 0;
-        if (candidate < bestScore) [bestScore, bestMoves] = [candidate, [slot]];
-        else if (candidate === bestScore && bestScore < current) bestMoves.push(slot);
-      }
+      // 封完之後兩側的 cell 都還要有 2 條以上走廊（門不算）
+      if (closing && (openCount(slot.a) < 3 || openCount(slot.b) < 3)) continue;
+
+      corridor[slot.index] = closing ? 0 : 1;
+      const reached = runBfs();
+      // 封牆後走廊斷開就不行
+      const candidate = closing && reached !== corridorCount - 1 ? Infinity : score();
+      corridor[slot.index] = closing ? 1 : 0;
+
+      if (candidate < bestScore) [bestScore, bestMoves] = [candidate, [slot]];
+      else if (candidate === bestScore) bestMoves.push(slot);
     }
 
-    if (bestMoves.length === 0) break; // 已經改善不了
+    const improving = bestScore < current;
+    if (!improving && (bestScore > current || sidewaysLeft === 0)) break; // 已經改善不了
+    if (!improving) sidewaysLeft -= 1;
+    if (bestMoves.length === 0) break;
+
     const move = rng.pick(bestMoves);
     const opening = corridor[move.index] === 0;
     corridor[move.index] = opening ? 1 : 0;
     grid.set(move.tile, opening ? 'floor' : 'wall');
     corridorCount += opening ? 1 : -1;
+    recent.push(move.index);
+    if (recent.length > BALANCE_TABU_SIZE) recent.shift();
     runBfs();
     current = score();
   }
@@ -566,10 +612,11 @@ export function checkMaze(maze: Maze, config: MazeConfig): MazeViolation[] {
     }
   }
 
-  // 死路（只在設定為全部移除時檢查）
+  // 死路（只在設定為全部移除時檢查）：門不算通路，門外那一格也要有兩條走廊
   if (config.deadEndRemoval >= 1) {
+    const corridor: Passable = (tile) => isCorridor(maze, tile);
     for (const tile of grid.allTiles()) {
-      if (isCorridor(maze, tile) && grid.countOpenNeighbors(tile) <= 1) {
+      if (corridor(tile) && grid.countOpenNeighbors(tile, corridor) <= 1) {
         violations.push({ kind: 'deadEnd', at: tile });
       }
     }
@@ -597,7 +644,10 @@ export function checkMaze(maze: Maze, config: MazeConfig): MazeViolation[] {
   return violations;
 }
 
-/** 「離條件有多遠」：結構性的問題最嚴重，公平性依差距計分 */
+/**
+ * 「離條件有多遠」：結構性的問題最嚴重，公平性依差距計分。
+ * 公平性的分數有上限，差距再大也不會超過一個結構性問題。
+ */
 function violationPenalty(violation: MazeViolation): number {
   switch (violation.kind) {
     case 'disconnected':
@@ -608,9 +658,9 @@ function violationPenalty(violation: MazeViolation): number {
     case 'notEnoughSpawns':
       return 1_000;
     case 'unfair':
-      return 100 * (violation.ratio - violation.limit);
+      return Math.min(999, 100 * (violation.ratio - violation.limit));
     case 'zoneTooClose':
-      return 100 * (violation.limit - violation.distance);
+      return Math.min(999, 100 * (violation.limit - violation.distance));
     default:
       return assertNever(violation);
   }
