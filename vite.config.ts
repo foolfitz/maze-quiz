@@ -8,7 +8,5 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
-    // Vitest 預設把 CSS 換成空字串；render/theme.test.ts 要讀 style.css 的內容（?raw）比對主題顏色
-    css: { include: [/style\.css/] },
   },
 });

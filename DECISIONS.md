@@ -205,7 +205,7 @@
 - 字型在載入階段（§5.1 的 `loading`）就用 `document.fonts.load()` 下載好，和圖片一樣算進進度條；下載失敗時記一筆警告、改用後備字型，不中斷遊戲 —— 迷宮上的選項文字畫在快取的靜態圖層裡，字型還沒到就畫的話會一直是後備字型。
 - `@font-face` 設 `font-display: swap` —— 載入階段已經等字型下載完，這個設定只影響字型出問題時：先用後備字型顯示，不讓文字消失。
 - canvas 用到的顏色全部移進 `theme.ts`（多了白邊 `outline` 與封住園區的暗色 `sealedShade`），DOM 用到的顏色全部變成 `style.css` 的 `:root` 變數，只有除錯覆蓋層除外；兩邊共用的七個顏色與字型由 `render/theme.test.ts` 檢查是否一致 —— §12.3 要求主題的顏色集中管理，之後才能新增其他主題。
-- Vitest 設定 `css.include` 讓 `style.css?raw` 讀得到內容 —— Vitest 預設把 CSS 換成空字串；不用 `node:fs` 讀檔是因為沒有 `@types/node`。
+- `render/theme.test.ts` 讀 `style.css` 原始內容比對（M7 當時用 `?raw` 加上 Vitest 的 `css.include` 設定；加入 `@types/node` 之後改用 `node:fs`，見下一節）。
 - 樹籬（牆）凸出去的角畫成圓角（半徑 0.3 格），迷宮外框的四個角也是圓的；凹進去的角維持直角 —— 牆的末端變圓，看起來像修剪過的樹籬而不是一格一格的方塊；不加花紋或漸層（§12.3）。
 - 所有牆合成一條路徑一次填滿 —— 每格分開畫時，devicePixelRatio 是 1.5 之類的非整數時格子之間會出現細縫。
 - 走進園區時的大 ✓ ✗ 從 0.4 倍彈到原本大小（220 ms，略微超過再回彈）；reduced motion 時直接顯示；暫停時停格 —— §12.5 把 ✓ ✗ 列為回應玩家動作的動態。
@@ -217,3 +217,11 @@
 - 按鈕加上滑過與按下的樣子，滑過只在 `(hover: hover)` 的裝置顯示，都不加轉場動畫；按鈕取消 iPad 點擊時的灰色方塊 —— 平板點完後不會一直停在滑過的顏色；§12.5 不要裝飾性的動畫。
 - `:root` 設 `color-scheme: light` —— 目前只有淺色主題，瀏覽器開了深色模式時輸入框與捲軸也不要變深色。
 - 直向版面維持現在的結構：迷宮依寬度縮小、放在狀態列與題目列之間的正中央，上下留白（§12.1），不強制旋轉；留白的地方照樣可以用觸控操作 —— 實測 768×1024、744×1133（iPad mini）、1024×1366 都能玩；把迷宮轉成直的（15×25）會變成不同的迷宮，轉向時也無法換。
+
+## M7 之後的回饋
+
+- 加入 `@types/node`（devDependency，版本配合 Node 24）—— 使用者同意；`scripts/process-images.ts` 用到 Node API，之前沒辦法型別檢查。
+- `tsconfig.json` 直接納入整個 `scripts/`，`types` 加上 `node`，不另外拆一個給腳本用的設定檔 —— vite 與 vitest 的型別本來就會帶進 Node 型別（`vite.config.ts` 與測試檔都 import 它們），拆開也擋不住遊戲程式看到 `process` 之類的全域變數。
+- `render/theme.test.ts` 改用 `node:fs` 讀 `style.css` 與檢查字型檔，拿掉 Vitest 的 `css.include` 設定 —— 為了測試而改測試工具的設定比較繞。
+- 擋住 Safari 的「點兩下放大」：第二下的 `touchend` 取消預設動作（兩下間隔 400 ms 以內、距離 60 px 以內；手指移動超過 12 px 算滑動，不算一下）—— 使用者回報 iPad 的 Safari 在迷宮以外的地方點兩下會放大；viewport 的 `user-scalable=no` 與 CSS `touch-action` 在 Safari 上都擋不住。迷宮舞台與方向鍵本來就不會放大（按下時已經取消預設動作）。
+- 點兩下的判斷寧可抓寬 —— 抓太窄時 Safari 照樣放大；抓太寬的代價只是很快連點兩下按鈕時第二下不算，正好也避免誤按兩次。Pointer Events 在 `touchend` 之前就送出了，迷宮與方向鍵的操作不受影響；輸入框裡不擋，才能點兩下選字。

@@ -12,6 +12,7 @@
     "images": "tsx scripts/process-images.ts"
   },
   "devDependencies": {
+    "@types/node": "^24.13.6",
     "sharp": "^0.35.4",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",

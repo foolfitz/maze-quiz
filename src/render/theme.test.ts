@@ -1,13 +1,10 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { QUIZ_FONT_WEIGHTS } from '../loader';
-import styleCss from '../style.css?raw';
 import { ZOO_THEME, type Theme } from './theme';
 
 /** 去掉註解的 style.css：註解裡的 } 或 --x: y; 不會干擾解析 */
-const css = styleCss.replace(/\/\*[\s\S]*?\*\//g, '');
-
-/** public/fonts/ 裡的字型檔（只取檔名清單，不載入內容），例如 '/public/fonts/Andika-Bold.woff2' */
-const fontFiles = Object.keys(import.meta.glob('/public/fonts/*.woff2', { query: '?url' }));
+const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** style.css 裡 :root 的 CSS 變數，例如 { hedge: '#2f5e3b', ... } */
 function rootVariables(source: string): ReadonlyMap<string, string> {
@@ -60,7 +57,10 @@ describe('ZOO_THEME 與 style.css', () => {
     const weights = faces.map((face) => face.weight).sort();
     expect(weights).toEqual(QUIZ_FONT_WEIGHTS.map(String).sort());
     // CSS 裡的 /fonts/… 對應到 public/fonts/…（建置時 Vite 會改寫成相對路徑）
-    for (const face of faces) expect(fontFiles).toContain(`/public${face.url ?? ''}`);
+    for (const face of faces) {
+      expect(face.url).toMatch(/^\/fonts\//);
+      expect(existsSync(new URL(`../../public${face.url ?? ''}`, import.meta.url))).toBe(true);
+    }
   });
 
   it('後備字型（介面中文）和 --font-ui 相同', () => {
