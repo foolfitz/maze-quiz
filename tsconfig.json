@@ -17,5 +17,5 @@
             "@kancil-quiz/text": ["./vendor/text.ts"]
         }
     },
-    "include": ["src", "tests", "vendor", "vite.config.ts"]
+    "include": ["src", "tests", "vendor", "demo", "vite.config.ts"]
 }

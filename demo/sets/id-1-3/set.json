@@ -1,0 +1,171 @@
+{
+    "format": "kancil-set",
+    "version": 1,
+    "id": "01M42S8GC1NGBKTRAVPAW1SERD",
+    "kind": "vocab",
+    "language": "id",
+    "title": "第 1 冊第 3 課：Keluarga Saya 我的家人",
+    "description": "取自《新住民語文學習教材 印尼語第1冊》第 3 課的詞彙。",
+    "license": "CC-BY-4.0",
+    "authors": [
+        {
+            "name": "Kancil Quiz"
+        }
+    ],
+    "curriculum": [
+        {
+            "volume": 1,
+            "lesson": 3
+        }
+    ],
+    "faces": {
+        "prompt": ["image", "translation_zh"],
+        "answer": ["text"]
+    },
+    "entries": [
+        {
+            "id": "01M42S8H3BFXENQNPY0CXR1E8Y",
+            "item": {
+                "text": "ayah",
+                "translation_zh": "爸爸",
+                "image": {
+                    "src": "media/01M42S8GFTJJESRS8BPHBQ4VWH.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 26 頁"
+            }
+        },
+        {
+            "id": "01M42S8H3BWDNPSKXTYRWCN5GN",
+            "item": {
+                "text": "kakak",
+                "translation_zh": "哥哥/姐姐",
+                "image": {
+                    "src": "media/01M42S8GKKBASD1MZYM1V1N6BK.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 26 頁"
+            }
+        },
+        {
+            "id": "01M42S8H3BZ8JS7AGSBP92YHW7",
+            "item": {
+                "text": "ibu",
+                "translation_zh": "媽媽",
+                "image": {
+                    "src": "media/01M42S8GQA30ZQT8KV2RZ9SNZX.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 26 頁"
+            }
+        },
+        {
+            "id": "01M42S8H3CW2JJWHHJZF484A4S",
+            "item": {
+                "text": "adik",
+                "translation_zh": "弟弟/妹妹",
+                "image": {
+                    "src": "media/01M42S8GV87MVKDAMFN1S6V54W.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 26 頁"
+            }
+        },
+        {
+            "id": "01M42S8H3C8ACTGK9CMS7RSXK6",
+            "item": {
+                "text": "keluarga",
+                "translation_zh": "家人",
+                "image": {
+                    "src": "media/01M42S8GZSVTZ1HDKFKC1325JP.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 27 頁"
+            }
+        },
+        {
+            "id": "01M42S8H3CFBK6V2HJRXC7GPB7",
+            "item": {
+                "text": "sayang",
+                "translation_zh": "愛",
+                "image": {
+                    "src": "media/01M42S8H39FHJ3MKDQ35EE518Z.webp",
+                    "authors": [
+                        {
+                            "name": "Kancil Quiz"
+                        }
+                    ],
+                    "license": "CC-BY-4.0",
+                    "source": "AI 生成"
+                },
+                "authors": [
+                    {
+                        "name": "Kancil Quiz"
+                    }
+                ],
+                "license": "CC-BY-4.0",
+                "source": "《新住民語文學習教材 印尼語第1冊》第 3 課，課本第 27 頁"
+            }
+        }
+    ]
+}

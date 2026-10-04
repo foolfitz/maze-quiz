@@ -5,8 +5,19 @@ import { defineConfig } from 'vite-plus';
 // 放在 Kancil Quiz 中時不會讀這個檔案，照常解析到 workspace 的正本。
 const vendor = (name: string): string =>
     fileURLToPath(new URL(`./vendor/${name}.ts`, import.meta.url));
+const repoRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+    // 示範頁（demo/）：npm run dev 開發，npm run build 建置成靜態網站到 dist/
+    root: 'demo',
+    // 相對路徑：建置結果放在任何子目錄（例如 GitHub Pages 的 /maze-quiz/）都能開
+    base: './',
+    // 不做 SPA fallback：找不到的檔案回 404，而不是回傳 index.html
+    appType: 'mpa',
+    build: {
+        outDir: '../dist',
+        emptyOutDir: true,
+    },
     resolve: {
         alias: {
             '@kancil-quiz/games-sdk': vendor('games-sdk'),
@@ -14,6 +25,8 @@ export default defineConfig({
         },
     },
     test: {
+        // root 是 demo/，測試檔從 repo 根目錄找
+        dir: repoRoot,
         include: ['tests/**/*.test.ts'],
         // tests/theme.test.ts 會檢查 CSS 是否都限定在遊戲的根元素之下
         css: { include: [/src\/style\.css/] },

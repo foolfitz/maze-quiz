@@ -1,16 +1,17 @@
-# 檢查與測試：push 到 master 與 pull request 時執行
-name: Tests
+# 檢查、測試並建置示範頁；push 到 master 時發布到 GitHub Pages
+name: CI
 
 on:
     push:
         branches: [master]
     pull_request:
+    workflow_dispatch: # 也可以在 Actions 頁面手動執行
 
 permissions:
     contents: read
 
 jobs:
-    test:
+    build:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -23,3 +24,26 @@ jobs:
             - run: npm ci
             - run: npm run check # 格式、lint 與型別檢查
             - run: npm test
+            - run: npm run build
+            - if: github.event_name != 'pull_request'
+              uses: actions/upload-pages-artifact@v5
+              with:
+                  path: dist
+
+    deploy:
+        if: github.event_name != 'pull_request'
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            pages: write
+            id-token: write
+        # 同一時間只發布一次；新的 push 進來時，不中斷正在發布的那一次
+        concurrency:
+            group: pages
+            cancel-in-progress: false
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - id: deployment
+              uses: actions/deploy-pages@v5

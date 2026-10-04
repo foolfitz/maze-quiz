@@ -14,6 +14,9 @@
         "./meta": "./src/meta.ts"
     },
     "scripts": {
+        "dev": "vp dev",
+        "build": "vp build",
+        "preview": "vp preview",
         "test": "vp test run",
         "check": "vp check",
         "check:fix": "vp check --fix"

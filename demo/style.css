@@ -1,0 +1,173 @@
+/* 示範頁的樣式。遊戲本身的樣式在 src/style.css，限定在 .kq-maze 之下 */
+
+:root {
+    --demo-bg: #ead9a6; /* 與迷宮的走道同色 */
+    --demo-fg: #1f2a24;
+    --demo-muted: #5b665f;
+    --demo-accent: #2f5e3b; /* 與迷宮的樹籬同色 */
+    --demo-accent-pressed: #244a2e;
+    --demo-card: #fffdf6;
+    --demo-alert: #b3261e;
+
+    color-scheme: light;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--demo-bg);
+    color: var(--demo-fg);
+    font-family:
+        system-ui,
+        -apple-system,
+        'Segoe UI',
+        'Noto Sans',
+        'Noto Sans TC',
+        sans-serif;
+    line-height: 1.6;
+}
+
+#app {
+    height: 100%;
+}
+
+.demo-screen {
+    display: flex;
+    box-sizing: border-box;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    max-width: 40rem;
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    text-align: center;
+}
+
+.demo-game {
+    margin: 0;
+    color: var(--demo-muted);
+}
+
+.demo-title {
+    margin: 0;
+    font-size: clamp(1.5rem, 5vw, 2.25rem);
+}
+
+.demo-detail {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.demo-button {
+    padding: 0.75rem 3rem;
+    border: none;
+    border-radius: 0.75rem;
+    background: var(--demo-accent);
+    color: #fff;
+    font: inherit;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.demo-button:hover,
+.demo-button:active {
+    background: var(--demo-accent-pressed);
+}
+
+.demo-button:focus-visible {
+    outline: 3px solid var(--demo-fg);
+    outline-offset: 3px;
+}
+
+.demo-license {
+    width: 100%;
+    text-align: left;
+}
+
+.demo-license summary {
+    cursor: pointer;
+    text-align: center;
+}
+
+.demo-license pre {
+    overflow-x: auto;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--demo-card);
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+}
+
+.demo-note {
+    margin: 0;
+    color: var(--demo-muted);
+    font-size: 0.9rem;
+}
+
+.demo-note a {
+    color: inherit;
+}
+
+.demo-errors {
+    text-align: left;
+}
+
+/* 遊戲區要有明確的高度，迷宮的 canvas 依它決定大小 */
+.demo-play {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+}
+
+.demo-game-area {
+    flex: 1;
+    min-height: 0;
+}
+
+/* 除錯畫面（?debug=1）：接在遊戲區下方，遊戲區跟著縮小 */
+.demo-debug {
+    flex: none;
+    box-sizing: border-box;
+    max-height: 30vh;
+    overflow-y: auto;
+    padding: 6px 10px;
+    border-top: 1px solid var(--demo-accent);
+    background: var(--demo-card);
+    font:
+        12px/1.5 ui-monospace,
+        'SFMono-Regular',
+        Menlo,
+        monospace;
+}
+
+.demo-debug p,
+.demo-debug ul {
+    margin: 4px 0;
+}
+
+.demo-debug ul {
+    padding-left: 1.2em;
+}
+
+.demo-debug summary {
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.demo-debug-alert {
+    color: var(--demo-alert);
+    font-weight: 700;
+}
+
+.demo-debug-muted {
+    color: var(--demo-muted);
+}

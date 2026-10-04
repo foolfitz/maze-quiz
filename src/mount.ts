@@ -31,7 +31,7 @@ import {
 import { themeCssVariables, ZOO_THEME } from './render/theme';
 import { roundsToLevels, type LevelSource } from './rounds';
 import { createScope, type Scope } from './scope';
-import { createSession } from './session';
+import { createSession, type Session } from './session';
 import {
     getStorage,
     loadDpadSide,
@@ -63,6 +63,12 @@ interface LevelView {
     readonly labels: readonly ZoneLabel[];
 }
 
+/** 不屬於遊戲模組介面（GameModule）的掛勾，只給這個 repo 的示範頁用；平台不會傳 */
+export interface MountHooks {
+    /** 開局前把這一局交出去：除錯畫面（?debug=1）讀狀態，並呼叫 core/game.ts 的 debug 函式 */
+    readonly onSession?: (session: Session) => void;
+}
+
 /**
  * 在 el 裡建立整個遊戲並立刻開始（宿主已經用「開始」按鈕解鎖音訊，沒有標題畫面）。
  * 所有監聽、計時器與 requestAnimationFrame 都登記在 scope，destroy() 時一次清乾淨。
@@ -70,6 +76,7 @@ interface LevelView {
 export function mount(
     el: HTMLElement,
     ctx: GameContext<MazeQuizOptions>,
+    hooks: MountHooks = {},
 ): GameInstance {
     const doc = el.ownerDocument;
     const win = doc.defaultView;
@@ -550,6 +557,7 @@ export function mount(
             CONFIG.loop.maxFrameMs,
         );
 
+    hooks.onSession?.(session);
     session.start();
     // 沒有可以玩的題目時 start() 就已經結束了：不跑迴圈，直接停在結束畫面
     let loop: Loop = session.completed ? IDLE_LOOP : runLoop();

@@ -1,7 +1,10 @@
 import type { GameContext, GameEvent, Round } from '@kancil-quiz/games-sdk';
 import { describe, expect, it } from 'vite-plus/test';
 import mazeQuiz from '../src';
+import { debugCompleteLevel } from '../src/core/game';
 import { meta, type MazeQuizOptions } from '../src/meta';
+import { mount } from '../src/mount';
+import type { Session } from '../src/session';
 import {
     createFakeEnvironment,
     FakeKeyboardEvent,
@@ -307,6 +310,41 @@ describe('mount() 與 destroy()（假的 DOM）', () => {
         ]);
         expect(env.pendingFrames()).toBe(0);
         expect(played).toEqual([]);
+        instance.destroy();
+        expectClean(env, host);
+    });
+
+    it('示範頁的掛勾：開局前拿到這一局，除錯快捷鍵可以直接過關', () => {
+        const env = createFakeEnvironment();
+        const host = env.createHost();
+        const { ctx, events } = harness();
+        const sessions: Session[] = [];
+        // 開局前交出來：這時還沒有發出 started
+        const eventsWhenGiven: number[] = [];
+        const instance = mount(host, ctx, {
+            onSession: (session) => {
+                sessions.push(session);
+                eventsWhenGiven.push(events.length);
+            },
+        });
+        expect(sessions).toHaveLength(1);
+        expect(eventsWhenGiven).toEqual([0]);
+        const state = sessions[0]?.state;
+        if (state === undefined) throw new Error('沒有拿到這一局');
+        expect(state.phase.kind).toBe('levelIntro');
+
+        // 兩題都直接過關：不發出 answered，最後發出 completed
+        for (const questionNumber of ['第 1 / 2 題', '第 2 / 2 題']) {
+            expect(env.find(host, 'kq-maze-question-number')?.textContent).toBe(
+                questionNumber,
+            );
+            debugCompleteLevel(state);
+            env.runFrames(200);
+        }
+        expect(events.map((event) => event.type)).toEqual([
+            'started',
+            'completed',
+        ]);
         instance.destroy();
         expectClean(env, host);
     });
