@@ -1,68 +1,65 @@
-import { ENEMY_KINDS, type EnemyKind } from '../core/enemies';
-import { DIRECTION_VECTORS, type DistanceField, type Rect, type Tile } from '../core/grid';
+import type { EnemyKind } from '../core/enemies';
+import { DIRECTION_VECTORS, type Rect, type Tile } from '../core/grid';
 import type { Maze } from '../core/maze';
 import { assertNever, type Direction } from '../core/types';
+import type { TextSegmenter } from '../text/segments';
+import { layoutLabel, type LabelLayout } from './textLayout';
 import type { Theme } from './theme';
 
 /** 答案區裡要顯示的內容，順序與 maze.zones 相同 */
 export interface ZoneLabel {
-  readonly text: string;
-  /** 已經載入的選項圖片；沒有圖片或載入失敗時是 null，只顯示文字 */
-  readonly image: HTMLImageElement | null;
+    readonly text: string;
+    /** 已經載入的選項圖片；沒有圖片、還在載入或載入失敗時是 null，只顯示文字 */
+    readonly image: HTMLImageElement | null;
 }
 
-/** 除錯覆蓋層要畫在迷宮上的資訊（§12.6） */
-export interface DebugLayer {
-  readonly distances: DistanceField; // 起點到各格的 BFS 距離
-  readonly correct: readonly boolean[]; // 各園區的選項是否正確，順序與 maze.zones 相同
-}
-
-/** 浮點數格座標，整數值是格子中心（§6.1） */
+/** 浮點數格座標，整數值是格子中心 */
 export interface TilePoint {
-  readonly x: number;
-  readonly y: number;
+    readonly x: number;
+    readonly y: number;
 }
 
-/** 玩家的樣子：平常、重生後的無敵（閃爍）、受傷動畫（§10、§12.5） */
+/** 玩家的樣子：平常、重生後的無敵（閃爍）、受傷動畫 */
 export type PlayerCondition = 'normal' | 'invulnerable' | 'hurt';
 
 export interface PlayerView extends TilePoint {
-  readonly dir: Direction | null;
-  readonly pendingDir: Direction | null;
-  readonly condition: PlayerCondition;
+    readonly dir: Direction | null;
+    readonly pendingDir: Direction | null;
+    readonly condition: PlayerCondition;
 }
 
 export interface EnemyView extends TilePoint {
-  readonly kind: EnemyKind;
-  readonly dir: Direction | null;
-  /** 目前的目標格，除錯模式才畫（§12.6）；不畫時是 null */
-  readonly target: Tile | null;
+    readonly kind: EnemyKind;
+    readonly dir: Direction | null;
 }
 
 /** 走進園區時的大 ✓ ✗ */
 export interface ZoneFeedback {
-  readonly zoneIndex: number;
-  readonly kind: 'correct' | 'wrong';
+    readonly zoneIndex: number;
+    readonly kind: 'correct' | 'wrong';
 }
 
 export interface Scene {
-  readonly maze: Maze;
-  readonly labels: readonly ZoneLabel[];
-  /** 各園區是否已封住，順序與 maze.zones 相同；封門時會換成新陣列 */
-  readonly sealed: readonly boolean[];
-  readonly feedback: ZoneFeedback | null;
-  readonly debug: DebugLayer | null;
-  readonly player: PlayerView;
-  readonly enemies: readonly EnemyView[];
+    readonly maze: Maze;
+    readonly labels: readonly ZoneLabel[];
+    /** 各園區是否已封住，順序與 maze.zones 相同；封門時會換成新陣列 */
+    readonly sealed: readonly boolean[];
+    readonly feedback: ZoneFeedback | null;
+    readonly player: PlayerView;
+    readonly enemies: readonly EnemyView[];
 }
 
-/** 選項文字的最小字級（CSS px，§8） */
+/** 選項文字的最小字級（CSS px） */
 const MIN_LABEL_FONT_PX = 12;
+/** 選項文字最多幾行 */
+const MAX_LABEL_LINES = 3;
+/** 有圖片時，文字最多佔卡片內部高度的比例 */
+const IMAGE_TEXT_SHARE = 0.42;
 /** 碰壁抖動的長度 */
 const BUMP_MS = 180;
 /** 受傷與無敵時的閃爍：每隔多久切換一次 */
 const FLASH_MS = 100;
-/** reduced motion 時，無敵期間改用固定的半透明（§12.5） */
+/** reduced motion 時，無敵期間改用固定的半透明 */
 const INVULNERABLE_ALPHA = 0.45;
 /** 走進園區時的大 ✓ ✗ 從小彈到原本大小的時間；reduced motion 時直接顯示 */
 const MARK_POP_MS = 220;
@@ -73,582 +70,677 @@ const HEDGE_CORNER_RATIO = 0.3;
 
 /** 各方向的角度（弧度），畫箭頭時用來旋轉 */
 const DIRECTION_ANGLES: Readonly<Record<Direction, number>> = {
-  right: 0,
-  down: Math.PI / 2,
-  left: Math.PI,
-  up: -Math.PI / 2,
+    right: 0,
+    down: Math.PI / 2,
+    left: Math.PI,
+    up: -Math.PI / 2,
 };
 
 /** 靜態圖層是依哪些資料畫出來的；任何一項變了就重畫 */
 interface StaticLayerKey {
-  readonly maze: Maze;
-  readonly labels: readonly ZoneLabel[];
-  readonly sealed: readonly boolean[];
-  readonly debug: DebugLayer | null;
-  readonly tileSize: number;
-  readonly dpr: number;
+    readonly maze: Maze;
+    readonly labels: readonly ZoneLabel[];
+    readonly sealed: readonly boolean[];
+    readonly tileSize: number;
+    readonly dpr: number;
+    readonly fontsVersion: number;
 }
 
 export class Renderer {
-  /** prefers-reduced-motion 時關閉碰壁抖動（§12.5） */
-  reducedMotion = false;
+    /** prefers-reduced-motion 時關閉碰壁抖動與閃爍 */
+    reducedMotion = false;
 
-  private readonly canvas: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
-  private readonly theme: Theme;
-  private tileSize = 0; // CSS px
-  private dpr = 1;
+    private readonly canvas: HTMLCanvasElement;
+    private readonly ctx: CanvasRenderingContext2D;
+    private readonly theme: Theme;
+    private readonly segmenter: TextSegmenter;
+    private tileSize = 0; // CSS px
+    private dpr = 1;
+    /** 字型載入完成時加一，迫使靜態圖層用新字型重畫 */
+    private fontsVersion = 0;
 
-  // 牆、答案區與除錯資訊在一關之內不會變，先畫到另一張 canvas，每幀直接貼上
-  private readonly staticLayer: HTMLCanvasElement;
-  private readonly staticCtx: CanvasRenderingContext2D;
-  private staticKey: StaticLayerKey | null = null;
+    // 牆與答案區在一關之內不會變，先畫到另一張 canvas，每幀直接貼上
+    private readonly staticLayer: HTMLCanvasElement;
+    private readonly staticCtx: CanvasRenderingContext2D;
+    private staticKey: StaticLayerKey | null = null;
 
-  private bumpState: { readonly direction: Direction; readonly startMs: number } | null = null;
-  /** 目前顯示中的大 ✓ ✗ 從什麼時候開始，用來算彈出動畫 */
-  private feedbackState: { readonly feedback: ZoneFeedback; readonly startMs: number } | null = null;
+    private bumpState: {
+        readonly direction: Direction;
+        readonly startMs: number;
+    } | null = null;
+    /** 目前顯示中的大 ✓ ✗ 從什麼時候開始，用來算彈出動畫 */
+    private feedbackState: {
+        readonly feedback: ZoneFeedback;
+        readonly startMs: number;
+    } | null = null;
 
-  constructor(canvas: HTMLCanvasElement, theme: Theme) {
-    this.canvas = canvas;
-    this.ctx = get2dContext(canvas);
-    this.staticLayer = document.createElement('canvas');
-    this.staticCtx = get2dContext(this.staticLayer);
-    this.theme = theme;
-  }
-
-  /**
-   * 依可用空間決定格子邊長（§12.2）：floor(min(可用寬度 / width, 可用高度 / height))。
-   * Canvas 的內部解析度乘上 devicePixelRatio，在平板上才不會模糊。
-   */
-  layout(availableWidth: number, availableHeight: number, gridWidth: number, gridHeight: number): void {
-    const tileSize = Math.max(1, Math.floor(Math.min(availableWidth / gridWidth, availableHeight / gridHeight)));
-    const dpr = window.devicePixelRatio || 1;
-    const cssWidth = tileSize * gridWidth;
-    const cssHeight = tileSize * gridHeight;
-    this.tileSize = tileSize;
-    this.dpr = dpr;
-    this.canvas.style.width = `${cssWidth}px`;
-    this.canvas.style.height = `${cssHeight}px`;
-    const resize = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void => {
-      canvas.width = Math.round(cssWidth * dpr);
-      canvas.height = Math.round(cssHeight * dpr);
-      // 之後都用 CSS px 畫，由 transform 換算成實際像素
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize(this.canvas, this.ctx);
-    resize(this.staticLayer, this.staticCtx);
-    this.staticKey = null;
-  }
-
-  /** 螢幕座標（例如 PointerEvent 的 clientX/Y）→ 浮點數格座標 */
-  screenToTile(clientX: number, clientY: number): TilePoint {
-    const rect = this.canvas.getBoundingClientRect();
-    const size = this.tileSize || 1;
-    return { x: (clientX - rect.left) / size - 0.5, y: (clientY - rect.top) / size - 0.5 };
-  }
-
-  /** 碰壁回饋：角色往牆的方向輕微抖動 */
-  bump(direction: Direction, nowMs: number): void {
-    if (!this.reducedMotion) this.bumpState = { direction, startMs: nowMs };
-  }
-
-  draw(scene: Scene, nowMs: number): void {
-    if (this.tileSize === 0) return;
-    this.ensureStaticLayer(scene);
-    const { ctx } = this;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.staticLayer, 0, 0);
-    ctx.restore();
-
-    for (const enemy of scene.enemies) {
-      if (enemy.target !== null) this.drawEnemyTarget(enemy, enemy.target);
-    }
-    for (const enemy of scene.enemies) this.drawEnemy(enemy);
-    this.drawPlayer(scene.player, nowMs);
-
-    this.drawFeedback(scene, nowMs);
-  }
-
-  /** 走進園區時的大 ✓ ✗，蓋在玩家上面；出現時從小彈到原本大小（§12.5） */
-  private drawFeedback(scene: Scene, nowMs: number): void {
-    const { feedback } = scene;
-    const zone = feedback === null ? undefined : scene.maze.zones[feedback.zoneIndex];
-    if (feedback === null || zone === undefined) {
-      this.feedbackState = null;
-      return;
-    }
-    const shown = this.feedbackState?.feedback;
-    if (shown?.zoneIndex !== feedback.zoneIndex || shown.kind !== feedback.kind) {
-      this.feedbackState = { feedback, startMs: nowMs };
-    }
-    const startMs = this.feedbackState?.startMs ?? nowMs;
-    const t = Math.min(1, Math.max(0, (nowMs - startMs) / MARK_POP_MS));
-    const scale = this.reducedMotion ? 1 : MARK_POP_FROM + (1 - MARK_POP_FROM) * easeOutBack(t);
-
-    const { rect } = zone;
-    const { x, y } = this.center({ x: rect.x + (rect.width - 1) / 2, y: rect.y + (rect.height - 1) / 2 });
-    this.drawMark(this.ctx, x, y, this.tileSize * 0.95 * scale, feedback.kind);
-  }
-
-  // ─── 靜態圖層 ───────────────────────────────────────────────
-
-  private ensureStaticLayer(scene: Scene): void {
-    const key: StaticLayerKey = {
-      maze: scene.maze,
-      labels: scene.labels,
-      sealed: scene.sealed,
-      debug: scene.debug,
-      tileSize: this.tileSize,
-      dpr: this.dpr,
-    };
-    const old = this.staticKey;
-    if (
-      old !== null &&
-      old.maze === key.maze &&
-      old.labels === key.labels &&
-      old.sealed === key.sealed &&
-      old.debug === key.debug &&
-      old.tileSize === key.tileSize &&
-      old.dpr === key.dpr
+    constructor(
+        canvas: HTMLCanvasElement,
+        theme: Theme,
+        segmenter: TextSegmenter,
     ) {
-      return;
-    }
-    this.staticKey = key;
-
-    const ctx = this.staticCtx;
-    const { theme, tileSize: s } = this;
-    const { grid } = scene.maze;
-
-    // 先整片鋪上步道，再畫樹籬；迷宮外框四個角是圓的，圓角外面的步道色和頁面底色相同
-    ctx.fillStyle = theme.path;
-    ctx.fillRect(0, 0, grid.width * s, grid.height * s);
-    this.drawHedges(ctx, scene.maze);
-
-    scene.maze.zones.forEach((zone, i) => {
-      const sealed = scene.sealed[i] ?? false;
-      this.drawZoneCard(ctx, zone.rect, scene.labels[i] ?? { text: '', image: null }, sealed);
-      if (sealed) this.drawClosedGate(ctx, zone.door, zone.doorSide);
-    });
-
-    if (scene.debug !== null) this.drawDebug(ctx, scene.maze, scene.debug);
-  }
-
-  /**
-   * 樹籬（牆）：每格牆是一個方塊，但凸出去的角（相鄰兩側都不是牆）畫成圓角，
-   * 牆的末端和迷宮外圍的四個角就會是圓的，看起來像修剪過的樹籬。不加花紋或漸層（§12.3）。
-   * 所有方塊合成一條路徑一次填滿，相鄰方塊之間才不會出現細縫。
-   */
-  private drawHedges(ctx: CanvasRenderingContext2D, maze: Maze): void {
-    const { grid } = maze;
-    const s = this.tileSize;
-    const r = s * HEDGE_CORNER_RATIO;
-    // 迷宮外面算「不是牆」，外框的四個角才會變圓；外框其他地方的外側只有一面開放，不受影響
-    const open = (x: number, y: number): boolean => !grid.inBounds({ x, y }) || grid.isFloor({ x, y });
-
-    ctx.beginPath();
-    for (const { x, y } of grid.allTiles()) {
-      if (grid.isFloor({ x, y })) continue;
-      const up = open(x, y - 1);
-      const down = open(x, y + 1);
-      const left = open(x - 1, y);
-      const right = open(x + 1, y);
-      appendRoundedRect(ctx, x * s, y * s, s, s, {
-        topLeft: up && left ? r : 0,
-        topRight: up && right ? r : 0,
-        bottomRight: down && right ? r : 0,
-        bottomLeft: down && left ? r : 0,
-      });
-    }
-    ctx.fillStyle = this.theme.hedge;
-    ctx.fill();
-  }
-
-  /** 格子中心的 CSS px 座標 */
-  private center(tile: TilePoint): { x: number; y: number } {
-    return { x: (tile.x + 0.5) * this.tileSize, y: (tile.y + 0.5) * this.tileSize };
-  }
-
-  private drawZoneCard(ctx: CanvasRenderingContext2D, rect: Rect, label: ZoneLabel, sealed: boolean): void {
-    const { theme } = this;
-    const s = this.tileSize;
-    const pad = s * 0.12;
-    const x = rect.x * s + pad;
-    const y = rect.y * s + pad;
-    const w = rect.width * s - pad * 2;
-    const h = rect.height * s - pad * 2;
-
-    roundedRectPath(ctx, x, y, w, h, s * 0.25);
-    ctx.fillStyle = theme.card;
-    ctx.fill();
-    ctx.lineWidth = Math.max(1, s * 0.05);
-    ctx.strokeStyle = theme.cardEdge;
-    ctx.stroke();
-
-    ctx.fillStyle = theme.ink;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    if (label.image === null) {
-      // 沒有圖片時只顯示文字，字級放大；放不下就縮小，最小 12 px（§8）
-      const fitted = this.fitText(ctx, label.text, w - pad * 2, Math.max(MIN_LABEL_FONT_PX, s * 0.8), 'bold');
-      ctx.font = fitted.font;
-      ctx.fillText(fitted.text, x + w / 2, y + h / 2);
-    } else {
-      // 有圖片：圖片在上、文字在下。圖片等比縮放、不裁切，放進剩下的空間
-      // 格子很小時（例如 iPad mini 直向）字級也不低於 12 px（§8）
-      const labelSize = Math.max(MIN_LABEL_FONT_PX, s * 0.42);
-      const textHeight = label.text === '' ? 0 : labelSize * 1.25;
-      const box = { x: x + pad, y: y + pad, width: w - pad * 2, height: h - pad * 2 - textHeight };
-      drawContained(ctx, label.image, box);
-      if (label.text !== '') {
-        const fitted = this.fitText(ctx, label.text, w - pad * 2, labelSize, 'bold');
-        ctx.font = fitted.font;
-        ctx.fillText(fitted.text, x + w / 2, y + h - pad - textHeight / 2);
-      }
+        this.canvas = canvas;
+        this.ctx = get2dContext(canvas);
+        this.staticLayer = canvas.ownerDocument.createElement('canvas');
+        this.staticCtx = get2dContext(this.staticLayer);
+        this.theme = theme;
+        this.segmenter = segmenter;
     }
 
-    // 答錯封住的園區：變暗並保留 ✗（§8）；✗ 放在角落，選項文字仍看得到
-    if (sealed) {
-      roundedRectPath(ctx, x, y, w, h, s * 0.25);
-      ctx.fillStyle = theme.sealedShade;
-      ctx.fill();
-      this.drawMark(ctx, x + w - s * 0.32, y + s * 0.32, s * 0.3, 'wrong');
-    }
-  }
-
-  /** 關上的柵門：門的位置畫成步道底色，再畫一道橫過通道的柵欄 */
-  private drawClosedGate(ctx: CanvasRenderingContext2D, door: Tile, side: Direction): void {
-    const { theme } = this;
-    const s = this.tileSize;
-    const x = door.x * s;
-    const y = door.y * s;
-    ctx.fillStyle = theme.path;
-    ctx.fillRect(x, y, s, s);
-
-    // 通道是水平的（門開在左右兩側）時，柵欄是直的；反之是橫的
-    const across = side === 'left' || side === 'right' ? 'vertical' : 'horizontal';
-    const thickness = s * 0.3;
-    ctx.fillStyle = theme.wrong;
-    if (across === 'vertical') ctx.fillRect(x + (s - thickness) / 2, y, thickness, s);
-    else ctx.fillRect(x, y + (s - thickness) / 2, s, thickness);
-
-    // 柵欄上的白色橫條，讓它看起來像柵門而不只是一條紅線
-    ctx.fillStyle = theme.outline;
-    for (const t of [0.3, 0.7]) {
-      if (across === 'vertical') ctx.fillRect(x + (s - thickness) / 2, y + s * t - s * 0.04, thickness, s * 0.08);
-      else ctx.fillRect(x + s * t - s * 0.04, y + (s - thickness) / 2, s * 0.08, thickness);
-    }
-  }
-
-  /** 圓形的 ✓ 或 ✗ 標記。對錯不只靠顏色，一律搭配符號（§12.5）。 */
-  private drawMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, kind: 'correct' | 'wrong'): void {
-    const { theme } = this;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = kind === 'correct' ? theme.correct : theme.wrong;
-    ctx.fill();
-    ctx.lineWidth = Math.max(1.5, radius * 0.12);
-    ctx.strokeStyle = theme.outline;
-    ctx.stroke();
-    ctx.fillStyle = theme.outline;
-    ctx.font = `bold ${Math.round(radius * 1.25)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(kind === 'correct' ? '✓' : '✗', cx, cy + radius * 0.06);
-  }
-
-  /** 單行文字：先用最大字級，太寬就依比例縮小；縮到最小字級還放不下就截斷加「…」 */
-  private fitText(
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    maxWidth: number,
-    maxSize: number,
-    weight: string,
-  ): { text: string; font: string } {
-    const fontAt = (size: number): string => `${weight} ${size}px ${this.theme.quizFont}`;
-    const widthAt = (value: string, size: number): number => {
-      ctx.font = fontAt(size);
-      return ctx.measureText(value).width;
-    };
-
-    const fullWidth = widthAt(text, maxSize);
-    if (fullWidth <= maxWidth) return { text, font: fontAt(maxSize) };
-    const scaled = Math.floor((maxSize * maxWidth) / fullWidth);
-    if (scaled >= MIN_LABEL_FONT_PX) return { text, font: fontAt(scaled) };
-
-    // 以 code point 為單位刪字，才不會把 emoji 之類的字元切成一半
-    const chars = [...text];
-    while (chars.length > 1 && widthAt(`${chars.join('')}…`, MIN_LABEL_FONT_PX) > maxWidth) chars.pop();
-    return { text: `${chars.join('')}…`, font: fontAt(MIN_LABEL_FONT_PX) };
-  }
-
-  private drawDebug(ctx: CanvasRenderingContext2D, maze: Maze, debug: DebugLayer): void {
-    const { theme } = this;
-    const s = this.tileSize;
-    const { grid } = maze;
-
-    // 格線
-    ctx.strokeStyle = 'rgba(31, 42, 36, 0.18)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = 0; x <= grid.width; x++) {
-      ctx.moveTo(x * s + 0.5, 0);
-      ctx.lineTo(x * s + 0.5, grid.height * s);
-    }
-    for (let y = 0; y <= grid.height; y++) {
-      ctx.moveTo(0, y * s + 0.5);
-      ctx.lineTo(grid.width * s, y * s + 0.5);
-    }
-    ctx.stroke();
-
-    // 起點到各格的 BFS 距離
-    ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(31, 42, 36, 0.55)';
-    for (const tile of grid.allTiles()) {
-      const d = debug.distances.get(tile);
-      if (d === null || d === 0) continue;
-      // 出生點另外標示，不畫距離以免文字重疊
-      if (maze.enemySpawns.some((spawn) => spawn.x === tile.x && spawn.y === tile.y)) continue;
-      const { x, y } = this.center(tile);
-      ctx.fillText(String(d), x, y);
+    /**
+     * 依可用空間決定格子邊長：floor(min(可用寬度 / width, 可用高度 / height))。
+     * Canvas 的內部解析度乘上 devicePixelRatio，在平板上才不會模糊。
+     */
+    layout(
+        availableWidth: number,
+        availableHeight: number,
+        gridWidth: number,
+        gridHeight: number,
+        dpr: number,
+    ): void {
+        const tileSize = Math.max(
+            1,
+            Math.floor(
+                Math.min(
+                    availableWidth / gridWidth,
+                    availableHeight / gridHeight,
+                ),
+            ),
+        );
+        const cssWidth = tileSize * gridWidth;
+        const cssHeight = tileSize * gridHeight;
+        this.tileSize = tileSize;
+        this.dpr = dpr;
+        this.canvas.style.width = `${cssWidth}px`;
+        this.canvas.style.height = `${cssHeight}px`;
+        const resize = (
+            canvas: HTMLCanvasElement,
+            ctx: CanvasRenderingContext2D,
+        ): void => {
+            canvas.width = Math.round(cssWidth * dpr);
+            canvas.height = Math.round(cssHeight * dpr);
+            // 之後都用 CSS px 畫，由 transform 換算成實際像素
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+        resize(this.canvas, this.ctx);
+        resize(this.staticLayer, this.staticCtx);
+        this.staticKey = null;
     }
 
-    // 各園區的對錯（左上角，不和封住的 ✗ 重疊）
-    maze.zones.forEach((zone, i) => {
-      const correct = debug.correct[i] ?? false;
-      this.drawMark(ctx, zone.rect.x * s + s * 0.3, zone.rect.y * s + s * 0.3, s * 0.22, correct ? 'correct' : 'wrong');
-    });
-    ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
-
-    // 敵人出生點：第 i 個出生點放第 i 種敵人
-    ctx.font = `${Math.max(9, Math.floor(s * 0.32))}px ui-monospace, monospace`;
-    maze.enemySpawns.forEach((spawn: Tile, i) => {
-      const { x, y } = this.center(spawn);
-      const kind = ENEMY_KINDS[i];
-      const color = kind === undefined ? theme.wrong : theme.enemies[kind];
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = color;
-      ctx.strokeRect(x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6);
-      ctx.fillStyle = color;
-      ctx.fillText(`E${i + 1}`, x, y);
-    });
-  }
-
-  // ─── 動態部分 ───────────────────────────────────────────────
-
-  private drawPlayer(player: PlayerView, nowMs: number): void {
-    const { ctx, theme } = this;
-    const s = this.tileSize;
-    let { x, y } = this.center(player);
-
-    if (this.bumpState !== null) {
-      // 開始時間是按鍵當下的 performance.now()，可能比這一幀的時間戳記晚一點，所以 t 可能是負的；
-      // 負的就當作剛開始，不要把抖動丟掉
-      const t = Math.max(0, (nowMs - this.bumpState.startMs) / BUMP_MS);
-      if (t >= 1) {
-        this.bumpState = null;
-      } else {
-        // 往牆的方向來回抖兩下，幅度逐漸變小
-        const v = DIRECTION_VECTORS[this.bumpState.direction];
-        const offset = Math.sin(t * Math.PI * 4) * (1 - t) * s * 0.12;
-        x += v.x * offset;
-        y += v.y * offset;
-      }
+    /** 字型載入完成：下一幀用新字型重畫選項文字 */
+    fontsChanged(): void {
+        this.fontsVersion += 1;
     }
 
-    // 受傷：紅藍交替閃爍；無敵：忽隱忽現。reduced motion 時不閃爍，改用固定的紅色或半透明（§12.5）
-    const flashOn = !this.reducedMotion && Math.floor(nowMs / FLASH_MS) % 2 === 0;
-    const hurt = player.condition === 'hurt';
-    let alpha = 1;
-    if (player.condition === 'invulnerable') alpha = this.reducedMotion ? INVULNERABLE_ALPHA : flashOn ? 1 : 0.2;
-    const fill = hurt && (this.reducedMotion || flashOn) ? theme.wrong : theme.keeper;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    const r = s * 0.36;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.fill();
-    ctx.lineWidth = Math.max(1, s * 0.06);
-    ctx.strokeStyle = theme.outline;
-    ctx.stroke();
-    ctx.restore();
-    // 受傷動畫期間不畫方向箭頭
-    if (hurt) return;
-
-    // 目前方向：角色身上的小箭頭
-    if (player.dir !== null) {
-      this.withRotation(x, y, DIRECTION_ANGLES[player.dir], () => {
-        ctx.beginPath();
-        ctx.moveTo(r * 0.62, 0);
-        ctx.lineTo(-r * 0.28, -r * 0.46);
-        ctx.lineTo(-r * 0.28, r * 0.46);
-        ctx.closePath();
-        ctx.fillStyle = theme.outline;
-        ctx.fill();
-      });
+    /** 螢幕座標（例如 PointerEvent 的 clientX/Y）→ 浮點數格座標 */
+    screenToTile(clientX: number, clientY: number): TilePoint {
+        const rect = this.canvas.getBoundingClientRect();
+        const size = this.tileSize || 1;
+        return {
+            x: (clientX - rect.left) / size - 0.5,
+            y: (clientY - rect.top) / size - 0.5,
+        };
     }
 
-    // 等待轉向：角色外面的虛線箭頭
-    if (player.pendingDir !== null) {
-      this.withRotation(x, y, DIRECTION_ANGLES[player.pendingDir], () => {
-        ctx.strokeStyle = theme.keeper;
-        ctx.fillStyle = theme.keeper;
-        ctx.lineWidth = Math.max(1.5, s * 0.08);
-        ctx.setLineDash([s * 0.1, s * 0.08]);
-        ctx.beginPath();
-        ctx.moveTo(r * 1.2, 0);
-        ctx.lineTo(r * 2.0, 0);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(r * 2.5, 0);
-        ctx.lineTo(r * 1.95, -r * 0.4);
-        ctx.lineTo(r * 1.95, r * 0.4);
-        ctx.closePath();
-        ctx.fill();
-      });
+    /** 碰壁回饋：角色往牆的方向輕微抖動 */
+    bump(direction: Direction, nowMs: number): void {
+        if (!this.reducedMotion) this.bumpState = { direction, startMs: nowMs };
     }
-  }
 
-  /**
-   * 敵人：三種外形不同，不只靠顏色區分（§9）——chaser 是尖刺球、wanderer 是方塊、ambusher 是三角形。
-   * 都有一雙看向前進方向的眼睛，和玩家（圓形加箭頭）也分得開。
-   */
-  private drawEnemy(enemy: EnemyView): void {
-    const { ctx, theme } = this;
-    const s = this.tileSize;
-    const { x, y } = this.center(enemy);
-    const r = s * 0.4;
+    draw(scene: Scene, nowMs: number): void {
+        if (this.tileSize === 0) return;
+        this.ensureStaticLayer(scene);
+        const { ctx } = this;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(this.staticLayer, 0, 0);
+        ctx.restore();
 
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.beginPath();
-    switch (enemy.kind) {
-      case 'chaser': {
-        const spikes = 8;
-        for (let i = 0; i < spikes * 2; i++) {
-          const radius = i % 2 === 0 ? r * 1.05 : r * 0.72;
-          const angle = (Math.PI * i) / spikes - Math.PI / 2;
-          ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        for (const enemy of scene.enemies) this.drawEnemy(enemy);
+        this.drawPlayer(scene.player, nowMs);
+
+        this.drawFeedback(scene, nowMs);
+    }
+
+    /** 走進園區時的大 ✓ ✗，蓋在玩家上面；出現時從小彈到原本大小 */
+    private drawFeedback(scene: Scene, nowMs: number): void {
+        const { feedback } = scene;
+        const zone =
+            feedback === null
+                ? undefined
+                : scene.maze.zones[feedback.zoneIndex];
+        if (feedback === null || zone === undefined) {
+            this.feedbackState = null;
+            return;
         }
-        ctx.closePath();
-        break;
-      }
-      case 'wanderer':
-        roundedRectPath(ctx, -r * 0.85, -r * 0.85, r * 1.7, r * 1.7, r * 0.35);
-        break;
-      case 'ambusher':
-        ctx.moveTo(0, -r * 1.05);
-        ctx.lineTo(r * 1.02, r * 0.8);
-        ctx.lineTo(-r * 1.02, r * 0.8);
-        ctx.closePath();
-        break;
-      default:
-        assertNever(enemy.kind);
+        const shown = this.feedbackState?.feedback;
+        if (
+            shown?.zoneIndex !== feedback.zoneIndex ||
+            shown.kind !== feedback.kind
+        ) {
+            this.feedbackState = { feedback, startMs: nowMs };
+        }
+        const startMs = this.feedbackState?.startMs ?? nowMs;
+        const t = Math.min(1, Math.max(0, (nowMs - startMs) / MARK_POP_MS));
+        const scale = this.reducedMotion
+            ? 1
+            : MARK_POP_FROM + (1 - MARK_POP_FROM) * easeOutBack(t);
+
+        const { rect } = zone;
+        const { x, y } = this.center({
+            x: rect.x + (rect.width - 1) / 2,
+            y: rect.y + (rect.height - 1) / 2,
+        });
+        this.drawMark(
+            this.ctx,
+            x,
+            y,
+            this.tileSize * 0.95 * scale,
+            feedback.kind,
+        );
     }
-    ctx.fillStyle = theme.enemies[enemy.kind];
-    ctx.fill();
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(1, s * 0.06);
-    ctx.strokeStyle = theme.outline;
-    ctx.stroke();
 
-    // 眼睛：瞳孔往前進方向偏；三角形的眼睛往下放，才放得進去
-    const eyeY = enemy.kind === 'ambusher' ? r * 0.28 : -r * 0.05;
-    const look = enemy.dir === null ? { x: 0, y: 0 } : DIRECTION_VECTORS[enemy.dir];
-    for (const side of [-1, 1]) {
-      const ex = side * r * 0.32;
-      ctx.beginPath();
-      ctx.arc(ex, eyeY, r * 0.24, 0, Math.PI * 2);
-      ctx.fillStyle = theme.outline;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(ex + look.x * r * 0.1, eyeY + look.y * r * 0.1, r * 0.12, 0, Math.PI * 2);
-      ctx.fillStyle = theme.ink;
-      ctx.fill();
+    // ─── 靜態圖層 ───────────────────────────────────────────────
+
+    private ensureStaticLayer(scene: Scene): void {
+        const key: StaticLayerKey = {
+            maze: scene.maze,
+            labels: scene.labels,
+            sealed: scene.sealed,
+            tileSize: this.tileSize,
+            dpr: this.dpr,
+            fontsVersion: this.fontsVersion,
+        };
+        const old = this.staticKey;
+        if (
+            old !== null &&
+            old.maze === key.maze &&
+            old.labels === key.labels &&
+            old.sealed === key.sealed &&
+            old.tileSize === key.tileSize &&
+            old.dpr === key.dpr &&
+            old.fontsVersion === key.fontsVersion
+        ) {
+            return;
+        }
+        this.staticKey = key;
+
+        const ctx = this.staticCtx;
+        const { theme, tileSize: s } = this;
+        const { grid } = scene.maze;
+
+        // 先整片鋪上步道，再畫樹籬
+        ctx.clearRect(0, 0, grid.width * s, grid.height * s);
+        ctx.fillStyle = theme.path;
+        ctx.fillRect(0, 0, grid.width * s, grid.height * s);
+        this.drawHedges(ctx, scene.maze);
+
+        scene.maze.zones.forEach((zone, i) => {
+            const sealed = scene.sealed[i] ?? false;
+            this.drawZoneCard(
+                ctx,
+                zone.rect,
+                scene.labels[i] ?? { text: '', image: null },
+                sealed,
+            );
+            if (sealed) this.drawClosedGate(ctx, zone.door, zone.doorSide);
+        });
     }
-    ctx.restore();
-  }
 
-  /** 除錯：敵人的目標格（虛線圓圈），並從敵人拉一條細線過去（§12.6） */
-  private drawEnemyTarget(enemy: EnemyView, target: Tile): void {
-    const { ctx, theme } = this;
-    const s = this.tileSize;
-    const from = this.center(enemy);
-    const to = this.center(target);
-    ctx.save();
-    ctx.strokeStyle = theme.enemies[enemy.kind];
-    ctx.lineWidth = Math.max(1.5, s * 0.06);
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([s * 0.12, s * 0.08]);
-    ctx.beginPath();
-    ctx.arc(to.x, to.y, s * 0.4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
+    /**
+     * 樹籬（牆）：每格牆是一個方塊，但凸出去的角（相鄰兩側都不是牆）畫成圓角，
+     * 牆的末端和迷宮外圍的四個角就會是圓的，看起來像修剪過的樹籬。不加花紋或漸層。
+     * 所有方塊合成一條路徑一次填滿，相鄰方塊之間才不會出現細縫。
+     */
+    private drawHedges(ctx: CanvasRenderingContext2D, maze: Maze): void {
+        const { grid } = maze;
+        const s = this.tileSize;
+        const r = s * HEDGE_CORNER_RATIO;
+        // 迷宮外面算「不是牆」，外框的四個角才會變圓
+        const open = (x: number, y: number): boolean =>
+            !grid.inBounds({ x, y }) || grid.isFloor({ x, y });
 
-  /** 以 (x, y) 為原點、旋轉 angle 之後畫圖，畫完還原 */
-  private withRotation(x: number, y: number, angle: number, draw: () => void): void {
-    const { ctx } = this;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    draw();
-    ctx.restore();
-  }
+        ctx.beginPath();
+        for (const { x, y } of grid.allTiles()) {
+            if (grid.isFloor({ x, y })) continue;
+            const up = open(x, y - 1);
+            const down = open(x, y + 1);
+            const left = open(x - 1, y);
+            const right = open(x + 1, y);
+            appendRoundedRect(ctx, x * s, y * s, s, s, {
+                topLeft: up && left ? r : 0,
+                topRight: up && right ? r : 0,
+                bottomRight: down && right ? r : 0,
+                bottomLeft: down && left ? r : 0,
+            });
+        }
+        ctx.fillStyle = this.theme.hedge;
+        ctx.fill();
+    }
+
+    /** 格子中心的 CSS px 座標 */
+    private center(tile: TilePoint): { x: number; y: number } {
+        return {
+            x: (tile.x + 0.5) * this.tileSize,
+            y: (tile.y + 0.5) * this.tileSize,
+        };
+    }
+
+    private drawZoneCard(
+        ctx: CanvasRenderingContext2D,
+        rect: Rect,
+        label: ZoneLabel,
+        sealed: boolean,
+    ): void {
+        const { theme } = this;
+        const s = this.tileSize;
+        const pad = s * 0.12;
+        const x = rect.x * s + pad;
+        const y = rect.y * s + pad;
+        const w = rect.width * s - pad * 2;
+        const h = rect.height * s - pad * 2;
+        const inner = {
+            x: x + pad,
+            y: y + pad,
+            width: w - pad * 2,
+            height: h - pad * 2,
+        };
+
+        roundedRectPath(ctx, x, y, w, h, s * 0.25);
+        ctx.fillStyle = theme.card;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, s * 0.05);
+        ctx.strokeStyle = theme.cardEdge;
+        ctx.stroke();
+
+        const { text } = label;
+        if (label.image === null) {
+            // 沒有圖片時只顯示文字，字級放大；放不下就換行、縮小，最小 12 px
+            const layout = this.layoutText(text, {
+                maxWidth: inner.width,
+                maxHeight: inner.height,
+                maxFontPx: Math.max(MIN_LABEL_FONT_PX, s * 0.8),
+            });
+            this.drawLines(
+                ctx,
+                layout,
+                inner.x + inner.width / 2,
+                inner.y + inner.height / 2,
+            );
+        } else {
+            // 有圖片：圖片在上、文字在下。圖片等比縮放、不裁切，放進剩下的空間
+            const layout =
+                text.trim() === ''
+                    ? null
+                    : this.layoutText(text, {
+                          maxWidth: inner.width,
+                          maxHeight: inner.height * IMAGE_TEXT_SHARE,
+                          maxFontPx: Math.max(MIN_LABEL_FONT_PX, s * 0.42),
+                      });
+            const textHeight =
+                layout === null ? 0 : layout.lines.length * layout.lineHeightPx;
+            drawContained(ctx, label.image, {
+                x: inner.x,
+                y: inner.y,
+                width: inner.width,
+                height: inner.height - textHeight,
+            });
+            if (layout !== null) {
+                this.drawLines(
+                    ctx,
+                    layout,
+                    inner.x + inner.width / 2,
+                    inner.y + inner.height - textHeight / 2,
+                );
+            }
+        }
+
+        // 答錯封住的園區：變暗並保留 ✗；✗ 放在角落，選項文字仍看得到
+        if (sealed) {
+            roundedRectPath(ctx, x, y, w, h, s * 0.25);
+            ctx.fillStyle = theme.sealedShade;
+            ctx.fill();
+            this.drawMark(
+                ctx,
+                x + w - s * 0.32,
+                y + s * 0.32,
+                s * 0.3,
+                'wrong',
+            );
+        }
+    }
+
+    private layoutText(
+        text: string,
+        box: { maxWidth: number; maxHeight: number; maxFontPx: number },
+    ): LabelLayout {
+        const { ctx } = this;
+        return layoutLabel(
+            text,
+            { ...box, minFontPx: MIN_LABEL_FONT_PX, maxLines: MAX_LABEL_LINES },
+            (value, fontPx) => {
+                ctx.font = this.labelFont(fontPx);
+                return ctx.measureText(value).width;
+            },
+            this.segmenter,
+        );
+    }
+
+    private labelFont(fontPx: number): string {
+        return `bold ${fontPx}px ${this.theme.quizFont}`;
+    }
+
+    /** 多行文字，整塊以 (cx, cy) 為中心 */
+    private drawLines(
+        ctx: CanvasRenderingContext2D,
+        layout: LabelLayout,
+        cx: number,
+        cy: number,
+    ): void {
+        ctx.fillStyle = this.theme.ink;
+        ctx.font = this.labelFont(layout.fontPx);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const top = cy - (layout.lines.length * layout.lineHeightPx) / 2;
+        layout.lines.forEach((line, i) => {
+            ctx.fillText(line, cx, top + (i + 0.5) * layout.lineHeightPx);
+        });
+    }
+
+    /** 關上的柵門：門的位置畫成步道底色，再畫一道橫過通道的柵欄 */
+    private drawClosedGate(
+        ctx: CanvasRenderingContext2D,
+        door: Tile,
+        side: Direction,
+    ): void {
+        const { theme } = this;
+        const s = this.tileSize;
+        const x = door.x * s;
+        const y = door.y * s;
+        ctx.fillStyle = theme.path;
+        ctx.fillRect(x, y, s, s);
+
+        // 通道是水平的（門開在左右兩側）時，柵欄是直的；反之是橫的
+        const vertical = side === 'left' || side === 'right';
+        const thickness = s * 0.3;
+        ctx.fillStyle = theme.wrong;
+        if (vertical) ctx.fillRect(x + (s - thickness) / 2, y, thickness, s);
+        else ctx.fillRect(x, y + (s - thickness) / 2, s, thickness);
+
+        // 柵欄上的白色橫條，讓它看起來像柵門而不只是一條紅線
+        ctx.fillStyle = theme.outline;
+        for (const t of [0.3, 0.7]) {
+            if (vertical)
+                ctx.fillRect(
+                    x + (s - thickness) / 2,
+                    y + s * t - s * 0.04,
+                    thickness,
+                    s * 0.08,
+                );
+            else
+                ctx.fillRect(
+                    x + s * t - s * 0.04,
+                    y + (s - thickness) / 2,
+                    s * 0.08,
+                    thickness,
+                );
+        }
+    }
+
+    /** 圓形的 ✓ 或 ✗ 標記。對錯不只靠顏色，一律搭配符號。 */
+    private drawMark(
+        ctx: CanvasRenderingContext2D,
+        cx: number,
+        cy: number,
+        radius: number,
+        kind: 'correct' | 'wrong',
+    ): void {
+        const { theme } = this;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = kind === 'correct' ? theme.correct : theme.wrong;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1.5, radius * 0.12);
+        ctx.strokeStyle = theme.outline;
+        ctx.stroke();
+        ctx.fillStyle = theme.outline;
+        ctx.font = `bold ${Math.round(radius * 1.25)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(kind === 'correct' ? '✓' : '✗', cx, cy + radius * 0.06);
+    }
+
+    // ─── 動態部分 ───────────────────────────────────────────────
+
+    private drawPlayer(player: PlayerView, nowMs: number): void {
+        const { ctx, theme } = this;
+        const s = this.tileSize;
+        let { x, y } = this.center(player);
+
+        if (this.bumpState !== null) {
+            // 開始時間是按鍵當下的 performance.now()，可能比這一幀的時間戳記晚一點，所以 t 可能是負的；
+            // 負的就當作剛開始，不要把抖動丟掉
+            const t = Math.max(0, (nowMs - this.bumpState.startMs) / BUMP_MS);
+            if (t >= 1) {
+                this.bumpState = null;
+            } else {
+                // 往牆的方向來回抖兩下，幅度逐漸變小
+                const v = DIRECTION_VECTORS[this.bumpState.direction];
+                const offset = Math.sin(t * Math.PI * 4) * (1 - t) * s * 0.12;
+                x += v.x * offset;
+                y += v.y * offset;
+            }
+        }
+
+        // 受傷：紅藍交替閃爍；無敵：忽隱忽現。reduced motion 時不閃爍，改用固定的紅色或半透明
+        const flashOn =
+            !this.reducedMotion && Math.floor(nowMs / FLASH_MS) % 2 === 0;
+        const hurt = player.condition === 'hurt';
+        let alpha = 1;
+        if (player.condition === 'invulnerable')
+            alpha = this.reducedMotion ? INVULNERABLE_ALPHA : flashOn ? 1 : 0.2;
+        const fill =
+            hurt && (this.reducedMotion || flashOn)
+                ? theme.wrong
+                : theme.keeper;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const r = s * 0.36;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, s * 0.06);
+        ctx.strokeStyle = theme.outline;
+        ctx.stroke();
+        ctx.restore();
+        // 受傷動畫期間不畫方向箭頭
+        if (hurt) return;
+
+        // 目前方向：角色身上的小箭頭
+        if (player.dir !== null) {
+            this.withRotation(x, y, DIRECTION_ANGLES[player.dir], () => {
+                ctx.beginPath();
+                ctx.moveTo(r * 0.62, 0);
+                ctx.lineTo(-r * 0.28, -r * 0.46);
+                ctx.lineTo(-r * 0.28, r * 0.46);
+                ctx.closePath();
+                ctx.fillStyle = theme.outline;
+                ctx.fill();
+            });
+        }
+
+        // 等待轉向：角色外面的虛線箭頭
+        if (player.pendingDir !== null) {
+            this.withRotation(x, y, DIRECTION_ANGLES[player.pendingDir], () => {
+                ctx.strokeStyle = theme.keeper;
+                ctx.fillStyle = theme.keeper;
+                ctx.lineWidth = Math.max(1.5, s * 0.08);
+                ctx.setLineDash([s * 0.1, s * 0.08]);
+                ctx.beginPath();
+                ctx.moveTo(r * 1.2, 0);
+                ctx.lineTo(r * 2.0, 0);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(r * 2.5, 0);
+                ctx.lineTo(r * 1.95, -r * 0.4);
+                ctx.lineTo(r * 1.95, r * 0.4);
+                ctx.closePath();
+                ctx.fill();
+            });
+        }
+    }
+
+    /**
+     * 敵人：三種外形不同，不只靠顏色區分——chaser 是尖刺球、wanderer 是方塊、ambusher 是三角形。
+     * 都有一雙看向前進方向的眼睛，和玩家（圓形加箭頭）也分得開。
+     */
+    private drawEnemy(enemy: EnemyView): void {
+        const { ctx, theme } = this;
+        const s = this.tileSize;
+        const { x, y } = this.center(enemy);
+        const r = s * 0.4;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        switch (enemy.kind) {
+            case 'chaser': {
+                const spikes = 8;
+                for (let i = 0; i < spikes * 2; i++) {
+                    const radius = i % 2 === 0 ? r * 1.05 : r * 0.72;
+                    const angle = (Math.PI * i) / spikes - Math.PI / 2;
+                    ctx.lineTo(
+                        Math.cos(angle) * radius,
+                        Math.sin(angle) * radius,
+                    );
+                }
+                ctx.closePath();
+                break;
+            }
+            case 'wanderer':
+                roundedRectPath(
+                    ctx,
+                    -r * 0.85,
+                    -r * 0.85,
+                    r * 1.7,
+                    r * 1.7,
+                    r * 0.35,
+                );
+                break;
+            case 'ambusher':
+                ctx.moveTo(0, -r * 1.05);
+                ctx.lineTo(r * 1.02, r * 0.8);
+                ctx.lineTo(-r * 1.02, r * 0.8);
+                ctx.closePath();
+                break;
+            default:
+                assertNever(enemy.kind);
+        }
+        ctx.fillStyle = theme.enemies[enemy.kind];
+        ctx.fill();
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(1, s * 0.06);
+        ctx.strokeStyle = theme.outline;
+        ctx.stroke();
+
+        // 眼睛：瞳孔往前進方向偏；三角形的眼睛往下放，才放得進去
+        const eyeY = enemy.kind === 'ambusher' ? r * 0.28 : -r * 0.05;
+        const look =
+            enemy.dir === null ? { x: 0, y: 0 } : DIRECTION_VECTORS[enemy.dir];
+        for (const side of [-1, 1]) {
+            const ex = side * r * 0.32;
+            ctx.beginPath();
+            ctx.arc(ex, eyeY, r * 0.24, 0, Math.PI * 2);
+            ctx.fillStyle = theme.outline;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(
+                ex + look.x * r * 0.1,
+                eyeY + look.y * r * 0.1,
+                r * 0.12,
+                0,
+                Math.PI * 2,
+            );
+            ctx.fillStyle = theme.ink;
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    /** 以 (x, y) 為原點、旋轉 angle 之後畫圖，畫完還原 */
+    private withRotation(
+        x: number,
+        y: number,
+        angle: number,
+        draw: () => void,
+    ): void {
+        const { ctx } = this;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        draw();
+        ctx.restore();
+    }
 }
 
 /** 把圖片等比縮放後置中放進 box，不裁切 */
-function drawContained(ctx: CanvasRenderingContext2D, image: HTMLImageElement, box: Rect): void {
-  const scale = Math.min(box.width / image.naturalWidth, box.height / image.naturalHeight);
-  if (!Number.isFinite(scale) || scale <= 0) return;
-  const width = image.naturalWidth * scale;
-  const height = image.naturalHeight * scale;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(image, box.x + (box.width - width) / 2, box.y + (box.height - height) / 2, width, height);
+function drawContained(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    box: Rect,
+): void {
+    const scale = Math.min(
+        box.width / image.naturalWidth,
+        box.height / image.naturalHeight,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(
+        image,
+        box.x + (box.width - width) / 2,
+        box.y + (box.height - height) / 2,
+        width,
+        height,
+    );
 }
 
 /** 超過 1 之後再回彈的緩動曲線（easeOutBack），t 介於 0–1 */
 function easeOutBack(t: number): number {
-  const overshoot = 1.70158;
-  const u = t - 1;
-  return 1 + (overshoot + 1) * u * u * u + overshoot * u * u;
+    const overshoot = 1.70158;
+    const u = t - 1;
+    return 1 + (overshoot + 1) * u * u * u + overshoot * u * u;
 }
 
 /** 矩形四個角各自的圓角半徑；0 就是直角 */
 interface CornerRadii {
-  readonly topLeft: number;
-  readonly topRight: number;
-  readonly bottomRight: number;
-  readonly bottomLeft: number;
+    readonly topLeft: number;
+    readonly topRight: number;
+    readonly bottomRight: number;
+    readonly bottomLeft: number;
 }
 
 /** 四個角都一樣圓的圓角矩形，開一條新路徑 */
 function roundedRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
 ): void {
-  ctx.beginPath();
-  appendRoundedRect(ctx, x, y, width, height, {
-    topLeft: radius,
-    topRight: radius,
-    bottomRight: radius,
-    bottomLeft: radius,
-  });
+    ctx.beginPath();
+    appendRoundedRect(ctx, x, y, width, height, {
+        topLeft: radius,
+        topRight: radius,
+        bottomRight: radius,
+        bottomLeft: radius,
+    });
 }
 
 /**
@@ -656,25 +748,26 @@ function roundedRectPath(
  * 不用 ctx.roundRect()：它要 Safari 16 以上，學校裡停在 iPadOS 15 的舊 iPad 會直接出錯、畫面全白。
  */
 function appendRoundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radii: CornerRadii,
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radii: CornerRadii,
 ): void {
-  const limit = (radius: number): number => Math.min(radius, width / 2, height / 2);
-  const topLeft = limit(radii.topLeft);
-  ctx.moveTo(x + topLeft, y);
-  ctx.arcTo(x + width, y, x + width, y + height, limit(radii.topRight));
-  ctx.arcTo(x + width, y + height, x, y + height, limit(radii.bottomRight));
-  ctx.arcTo(x, y + height, x, y, limit(radii.bottomLeft));
-  ctx.arcTo(x, y, x + width, y, topLeft);
-  ctx.closePath();
+    const limit = (radius: number): number =>
+        Math.min(radius, width / 2, height / 2);
+    const topLeft = limit(radii.topLeft);
+    ctx.moveTo(x + topLeft, y);
+    ctx.arcTo(x + width, y, x + width, y + height, limit(radii.topRight));
+    ctx.arcTo(x + width, y + height, x, y + height, limit(radii.bottomRight));
+    ctx.arcTo(x, y + height, x, y, limit(radii.bottomLeft));
+    ctx.arcTo(x, y, x + width, y, topLeft);
+    ctx.closePath();
 }
 
 function get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = canvas.getContext('2d');
-  if (ctx === null) throw new Error('瀏覽器不支援 Canvas 2D');
-  return ctx;
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) throw new Error('瀏覽器不支援 Canvas 2D');
+    return ctx;
 }

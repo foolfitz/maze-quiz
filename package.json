@@ -1,22 +1,40 @@
 {
-  "name": "maze-quiz",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "typecheck": "tsc",
-    "images": "tsx scripts/process-images.ts"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.6",
-    "sharp": "^0.35.4",
-    "tsx": "^4.23.15",
-    "typescript": "~6.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.1"
-  }
+    "name": "@kancil-quiz/game-maze-quiz",
+    "version": "0.0.0",
+    "private": true,
+    "description": "迷宮問答：Kancil Quiz 的遊戲模組，也可以單獨執行示範頁",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/foolfitz/maze-quiz.git"
+    },
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts",
+        "./meta": "./src/meta.ts"
+    },
+    "scripts": {
+        "test": "vp test run",
+        "check": "vp check",
+        "check:fix": "vp check --fix"
+    },
+    "devDependencies": {
+        "@types/node": "^22.20.5",
+        "vite-plus": "0.3.0"
+    },
+    "peerDependencies": {
+        "@kancil-quiz/games-sdk": "*",
+        "@kancil-quiz/text": "*"
+    },
+    "peerDependenciesMeta": {
+        "@kancil-quiz/games-sdk": {
+            "optional": true
+        },
+        "@kancil-quiz/text": {
+            "optional": true
+        }
+    },
+    "engines": {
+        "node": ">=22"
+    }
 }
