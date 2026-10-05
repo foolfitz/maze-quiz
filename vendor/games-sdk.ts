@@ -2,10 +2,15 @@
 
 export interface Face {
     text?: string;
+    // text 的語言（BCP 47），例：題組語言 'id'、中文意思 'zh-TW'。問答組的文字不確定是哪種語言，省略
+    lang?: string;
     romanization?: string;
     audio?: string; // 已解析的網址
     image?: string; // 已解析的網址
 }
+
+// 遊戲能呈現的欄位（lang 只是 text 的屬性，不算）
+export type FaceField = Exclude<keyof Face, 'lang'>;
 
 export type Round =
     | {
@@ -29,7 +34,7 @@ export interface GameRequirements {
     shape: Round['shape']; // 這個遊戲需要的題目形狀
     minRounds: number;
     optionCount?: { min: number; max: number }; // 僅 mcq：每題的選項數
-    renders: Partial<Record<FaceSlot, (keyof Face)[]>>; // 各位置能呈現的欄位
+    renders: Partial<Record<FaceSlot, FaceField[]>>; // 各位置能呈現的欄位
     scored: boolean; // 是否計分；字卡為 false
 }
 
@@ -75,4 +80,10 @@ export type GameEvent =
           presented?: string[];
       }
     | { type: 'viewed'; entryId: string } // 不計分的遊戲（例如字卡）
-    | { type: 'completed'; gameScore?: number; durationMs: number }; // gameScore 為遊戲自己的得分，只供顯示
+    | {
+          type: 'completed';
+          gameScore?: number; // 遊戲自己的得分，只供顯示
+          durationMs: number;
+          // 玩的人在遊戲中按了「再玩一次」：宿主結束這次作答，不顯示結果，直接重新開始（例如字卡）
+          replay?: boolean;
+      };
