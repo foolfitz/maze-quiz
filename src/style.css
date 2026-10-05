@@ -36,6 +36,8 @@
 
     position: relative;
     box-sizing: border-box;
+    /* 版面依遊戲自己的大小決定（手機、平板、投影），不看視窗：下面的 @container 都以它為準 */
+    container-type: size;
     width: 100%;
     /* 宿主應該給掛載點明確的高度；萬一沒有，至少不要縮成 0 而整個看不見 */
     height: 100%;
@@ -302,6 +304,90 @@
     to {
         transform: scale(1);
         opacity: 0;
+    }
+}
+
+/* ─── 手機 ─────────────────────────────────────────────── */
+
+/* 直向的手機：左右留白少一點，迷宮才能寬一些 */
+@container (width < 480px) {
+    .kq-maze .kq-maze-status {
+        min-height: 48px;
+        padding: 6px 12px;
+    }
+
+    .kq-maze .kq-maze-stage {
+        padding: 0 8px 8px;
+    }
+
+    .kq-maze .kq-maze-prompt {
+        gap: 8px;
+        padding: 8px 8px 12px;
+    }
+}
+
+/* 橫放的手機：畫面很矮，題目列改成迷宮旁邊的一欄（圖、題目、再聽一次、方向鍵由上而下），
+   迷宮才有足夠的高度。方向鍵設在右邊時整欄在右邊，設在左邊時在左邊 */
+@container (height < 480px) and (orientation: landscape) {
+    .kq-maze .kq-maze-game {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-areas:
+            'status status'
+            'stage prompt';
+    }
+
+    .kq-maze[data-dpad='left'] .kq-maze-game {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            'status status'
+            'prompt stage';
+    }
+
+    .kq-maze .kq-maze-status {
+        grid-area: status;
+        min-height: 44px;
+        padding: 4px 12px;
+    }
+
+    .kq-maze .kq-maze-stage {
+        grid-area: stage;
+        padding: 0 12px 8px;
+    }
+
+    .kq-maze .kq-maze-prompt {
+        grid-area: prompt;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        width: clamp(9rem, 26cqw, 14rem);
+        min-height: 0;
+        padding: 0 12px 8px 0;
+    }
+
+    .kq-maze[data-dpad='left'] .kq-maze-prompt {
+        padding: 0 0 8px 12px;
+    }
+
+    /* 沒有方向鍵時題目在整欄的中間 */
+    .kq-maze[data-dpad='off'] .kq-maze-prompt {
+        justify-content: center;
+    }
+
+    .kq-maze .kq-maze-prompt-text {
+        flex: 0 1 auto;
+        width: 100%;
+        text-align: center;
+    }
+
+    .kq-maze .kq-maze-prompt-image {
+        height: 3rem;
+    }
+
+    /* 整欄已經在左邊，方向鍵照原本的順序排在最下面 */
+    .kq-maze[data-dpad='left'] .kq-maze-dpad {
+        order: 0;
     }
 }
 

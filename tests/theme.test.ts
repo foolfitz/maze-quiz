@@ -99,10 +99,14 @@ function blocks(source: string): Block[] {
     return result;
 }
 
-/** 所有一般規則的選擇器（@media 裡的也算），不含 @font-face 與 @keyframes */
+/** 所有一般規則的選擇器（@media、@container 裡的也算），不含 @font-face 與 @keyframes */
 function selectors(source: string): string[] {
     return blocks(source).flatMap(({ prelude, body }) => {
-        if (prelude.startsWith('@media') || prelude.startsWith('@supports'))
+        if (
+            prelude.startsWith('@media') ||
+            prelude.startsWith('@supports') ||
+            prelude.startsWith('@container')
+        )
             return selectors(body);
         if (prelude.startsWith('@')) return [];
         return prelude.split(',').map((selector) => selector.trim());
