@@ -45,6 +45,9 @@ export interface GameModule<Options = Record<string, unknown>> {
     requires: GameRequirements;
     optionsSchema: object; // JSON Schema，老師端的設定表單依此自動產生
     defaultOptions: Options;
+    // 遊戲得分（completed 的 gameScore）的名稱，例：打地鼠「星星」。
+    // 有設定的遊戲，學生的結果頁與老師的成績頁才顯示遊戲得分；選擇題、配對、迷宮的得分就是答對題數，不設定
+    scoreLabel?: { 'zh-TW': string };
     mount(el: HTMLElement, ctx: GameContext<Options>): GameInstance;
 }
 
@@ -82,7 +85,7 @@ export type GameEvent =
     | { type: 'viewed'; entryId: string } // 不計分的遊戲（例如字卡）
     | {
           type: 'completed';
-          gameScore?: number; // 遊戲自己的得分，只供顯示
+          gameScore?: number; // 遊戲自己的得分，只供顯示（有 scoreLabel 的遊戲才顯示，見 7.4）
           durationMs: number;
           // 玩的人在遊戲中按了「再玩一次」：宿主結束這次作答，不顯示結果，直接重新開始（例如字卡）
           replay?: boolean;
